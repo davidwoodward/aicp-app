@@ -23,9 +23,17 @@ src/
     └── client.ts
 ```
 
-## Related Repos
+## AICP Product
 
-- **`../aicp-infra`** — Terraform infrastructure (Cloud Run, Firestore, IAM, Artifact Registry)
+This repo is one of three that make up the AICP product:
+
+| Repo | Purpose |
+|---|---|
+| `aicp-infra` | Terraform infrastructure (Cloud Run, Firestore, IAM, Artifact Registry) |
+| **`aicp-app`** | **This repo** — web application (backend API + frontend) |
+| `aicp-claude-agent` | CLI agent wrapping Claude Code, connects to this backend via WebSocket |
+
+The `/ws` WebSocket endpoint is the communication channel between `aicp-claude-agent` and this backend.
 
 ## Infrastructure Context
 
