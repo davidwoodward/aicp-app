@@ -1,0 +1,43 @@
+steps:
+  # Build the Docker image with both SHA and latest tags
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REPOSITORY}/${_IMAGE}:${COMMIT_SHA}'
+      - '-t'
+      - '${_REPOSITORY}/${_IMAGE}:latest'
+      - '.'
+
+  # Push the SHA-tagged image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_REPOSITORY}/${_IMAGE}:${COMMIT_SHA}'
+
+  # Push the latest-tagged image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_REPOSITORY}/${_IMAGE}:latest'
+
+  # Deploy to Cloud Run using the SHA-tagged image
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE}'
+      - '--image'
+      - '${_REPOSITORY}/${_IMAGE}:${COMMIT_SHA}'
+      - '--region'
+      - '${_REGION}'
+
+substitutions:
+  _REGION: us-central1
+  _REPOSITORY: us-central1-docker.pkg.dev/aicp-dev/aicp
+  _SERVICE: aicp-backend
+  _IMAGE: aicp-backend
+
+options:
+  logging: CLOUD_LOGGING_ONLY
