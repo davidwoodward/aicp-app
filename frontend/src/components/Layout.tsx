@@ -3,7 +3,7 @@ import ThemeToggle from './ThemeToggle'
 
 export default function Layout() {
   const location = useLocation()
-  const isHome = location.pathname === '/'
+  const isProjectList = location.pathname === '/projects'
 
   return (
     <div className="min-h-screen bg-surface-0">
@@ -14,9 +14,22 @@ export default function Layout() {
             AICP
           </Link>
           <div className="h-4 w-px bg-border" />
-          <span className="text-text-muted text-xs font-mono uppercase tracking-widest">
-            {isHome ? 'Projects' : 'Conductor'}
-          </span>
+          <Link
+            to="/"
+            className="text-text-muted text-xs font-mono uppercase tracking-widest hover:text-text-secondary transition-colors"
+          >
+            Chat
+          </Link>
+          <Link
+            to="/projects"
+            className={`text-xs font-mono uppercase tracking-widest transition-colors ${
+              isProjectList || location.pathname.startsWith('/projects/')
+                ? 'text-accent'
+                : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            Projects
+          </Link>
           <div className="ml-auto">
             <ThemeToggle />
           </div>
