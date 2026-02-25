@@ -93,8 +93,8 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
           className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface-2 hover:border-border-bright transition-colors"
           style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-text-muted)' }}
         >
-          <span>⌘K</span>
-          <span className="text-text-muted opacity-60">search</span>
+          <span>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+'}K</span>
+          <span className="text-text-muted opacity-80">search</span>
         </button>
 
         <ThemeToggle />

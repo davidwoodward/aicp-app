@@ -142,7 +142,7 @@ export default function CmdKPalette({ onClose }: Props) {
           className="flex items-center gap-3 px-4"
           style={{ borderBottom: '1px solid var(--color-border)', height: '48px', flexShrink: 0 }}
         >
-          <span style={{ fontSize: '14px', color: 'var(--color-text-muted)', flexShrink: 0 }}>⌘</span>
+          <span style={{ fontSize: navigator.platform.includes('Mac') ? '14px' : '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', flexShrink: 0 }}>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}</span>
           <input
             ref={inputRef}
             value={query}
