@@ -35,6 +35,10 @@ This repo is one of three that make up the AICP product:
 
 The `/ws` WebSocket endpoint is the communication channel between `aicp-claude-agent` and this backend.
 
+## Infrastructure Rule
+
+**NEVER create, modify, or destroy infrastructure outside of Terraform.** All GCP resources — indexes, IAM bindings, APIs, Cloud Run services, Firestore databases, Artifact Registry repos, and anything else — must be defined in `aicp-infra` and applied via `terraform apply`. No `gcloud` commands that create or mutate resources. No exceptions.
+
 ## Infrastructure Context
 
 - **GCP Project**: `aicp-dev`
