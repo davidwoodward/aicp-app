@@ -8,6 +8,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@fastify/static": "^9.0.0",
     "@fastify/websocket": "^11.2.0",
     "@google-cloud/firestore": "^7.11.0",
     "dotenv": "^16.4.7",
@@ -15,6 +16,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
+    "@types/ws": "^8.18.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   }
