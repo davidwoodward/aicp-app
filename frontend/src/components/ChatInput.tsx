@@ -5,12 +5,13 @@ interface Props {
   disabled?: boolean;
   provider: string;
   model: string;
+  planningMode?: boolean;
   onSlashTrigger?: (query: string) => void;
   onSlashDismiss?: () => void;
   slashActive?: boolean;
 }
 
-export default function ChatInput({ onSend, disabled, provider, model, onSlashTrigger, onSlashDismiss, slashActive }: Props) {
+export default function ChatInput({ onSend, disabled, provider, model, planningMode, onSlashTrigger, onSlashDismiss, slashActive }: Props) {
   const [value, setValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -58,13 +59,40 @@ export default function ChatInput({ onSend, disabled, provider, model, onSlashTr
   return (
     <div className="border-t border-border bg-surface-1 p-3">
       <div className="max-w-3xl mx-auto">
-        <div className="relative flex items-end gap-2 bg-surface-2 border border-border rounded-lg px-3 py-2 focus-within:border-accent/40 transition-colors">
+        <div
+          className="relative flex items-end gap-2 bg-surface-2 border rounded-lg px-3 py-2 transition-colors"
+          style={{
+            borderColor: planningMode
+              ? 'rgba(110, 231, 183, 0.35)'
+              : 'var(--color-border)',
+          }}
+        >
+          {/* Planning mode badge inside input */}
+          {planningMode && (
+            <span
+              className="shrink-0 self-center"
+              style={{
+                fontSize: '9px',
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 600,
+                color: 'var(--color-accent)',
+                padding: '1px 6px',
+                border: '1px solid rgba(110, 231, 183, 0.4)',
+                borderRadius: '3px',
+                background: 'rgba(110, 231, 183, 0.08)',
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+              }}
+            >
+              Plan
+            </span>
+          )}
           <textarea
             ref={textareaRef}
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message AICP..."
+            placeholder={planningMode ? 'Describe an action to plan…' : 'Message AICP...'}
             disabled={disabled}
             rows={1}
             className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none resize-none max-h-[200px] leading-relaxed disabled:opacity-50"
@@ -82,7 +110,11 @@ export default function ChatInput({ onSend, disabled, provider, model, onSlashTr
         </div>
         <div className="flex items-center justify-between mt-1.5 px-1">
           <span className="text-[10px] font-mono text-text-muted">
-            {provider}/{model.split('/').pop()} &middot; Shift+Enter for newline
+            {planningMode ? (
+              <>control-plane LLM &middot; actions require confirmation</>
+            ) : (
+              <>{provider}/{model.split('/').pop()} &middot; Shift+Enter for newline</>
+            )}
           </span>
         </div>
       </div>

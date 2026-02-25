@@ -1,9 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'DM Sans', sans-serif;
+  --font-display: 'Syne', sans-serif;
 
   --color-surface-0: #0a0a0f;
   --color-surface-1: #12121a;
@@ -64,45 +65,69 @@ body {
   margin: 0;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--color-surface-1); }
-::-webkit-scrollbar-thumb { background: var(--color-border-bright); border-radius: 3px; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
 
-/* Typing indicator animation */
-.typing-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
+/* Typing indicator */
+.typing-indicator { display: inline-flex; align-items: center; gap: 3px; }
 .typing-indicator .dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
+  width: 4px; height: 4px; border-radius: 50%;
   background-color: var(--color-accent);
   animation: typing-bounce 1.4s ease-in-out infinite;
 }
-
-.typing-indicator .dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-indicator .dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
+.typing-indicator .dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator .dot:nth-child(3) { animation-delay: 0.4s; }
 
 @keyframes typing-bounce {
-  0%, 80%, 100% {
-    opacity: 0.3;
-    transform: scale(0.8);
-  }
-  40% {
-    opacity: 1;
-    transform: scale(1);
-  }
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* Status pulse — for "sent" prompts and "busy" agents */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+  50% { opacity: 0.7; box-shadow: 0 0 0 3px transparent; }
+}
+.status-pulse { animation: status-pulse 1.8s ease-in-out infinite; }
+
+/* Cmd+K palette entrance */
+@keyframes cmdk-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.cmdk-animate { animation: cmdk-in 0.14s ease-out forwards; }
+
+/* Telemetry scan-line sweep */
+.scan-surface {
+  position: relative;
+  overflow: hidden;
+}
+.scan-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(110, 231, 183, 0.025) 50%,
+    transparent 100%
+  );
+  transform: translateY(-100%);
+  animation: scan-sweep 4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes scan-sweep {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(200%); }
+}
+
+/* Plan tree branch lines */
+.tree-branch {
+  border-left: 1px solid var(--color-border);
+  margin-left: 15px;
+  padding-left: 13px;
 }
 
 /* Smooth scroll utility */
-.scroll-smooth {
-  scroll-behavior: smooth;
-}
+.scroll-smooth { scroll-behavior: smooth; }

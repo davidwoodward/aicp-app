@@ -18,9 +18,15 @@ export default function ConversationSidebar({ activeId, onSelect, onNew, refresh
 
   async function handleDelete(e: React.MouseEvent, id: string) {
     e.stopPropagation()
-    await api.delete(id).catch(() => {})
-    setList((prev) => prev.filter((c) => c.id !== id))
+    // Optimistic delete with rollback
+    const snapshot = [...list]
+    setList(prev => prev.filter(c => c.id !== id))
     if (activeId === id) onNew()
+    try {
+      await api.delete(id)
+    } catch {
+      setList(snapshot)
+    }
   }
 
   return (

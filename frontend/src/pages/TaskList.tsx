@@ -4,10 +4,10 @@ import { prompts as api, agents as agentsApi, type Prompt, type Agent } from '..
 interface Props {
   projectId: string
   prompts: Prompt[]
-  onUpdate: () => Promise<void>
+  setPrompts: React.Dispatch<React.SetStateAction<Prompt[]>>
 }
 
-export default function TaskList({ projectId, prompts, onUpdate }: Props) {
+export default function TaskList({ projectId, prompts, setPrompts }: Props) {
   const [agentList, setAgentList] = useState<Agent[]>([])
   const [selectedAgent, setSelectedAgent] = useState('')
   const [executing, setExecuting] = useState<string | null>(null)
@@ -33,13 +33,24 @@ export default function TaskList({ projectId, prompts, onUpdate }: Props) {
     const [moved] = reordered.splice(dragItem.current, 1)
     reordered.splice(dragOverItem.current, 0, moved)
 
+    // Optimistic reorder — update order_index in state immediately
+    const snapshot = [...prompts]
+    setPrompts(prev => {
+      const updated = [...prev]
+      reordered.forEach((rp, i) => {
+        const idx = updated.findIndex(p => p.id === rp.id)
+        if (idx !== -1) updated[idx] = { ...updated[idx], order_index: i }
+      })
+      return updated
+    })
+
     dragItem.current = null
     dragOverItem.current = null
 
     try {
       await api.reorder(projectId, reordered.map((p) => p.id))
-      await onUpdate()
     } catch (err: unknown) {
+      setPrompts(snapshot)
       setError(err instanceof Error ? err.message : 'Failed to reorder')
     }
   }
@@ -48,10 +59,20 @@ export default function TaskList({ projectId, prompts, onUpdate }: Props) {
     if (!selectedAgent) return
     setExecuting(promptId)
     setError('')
+
+    // Optimistic: mark as 'sent' immediately
+    const snapshot = prompts.find(p => p.id === promptId)
+    setPrompts(prev => prev.map(p =>
+      p.id === promptId ? { ...p, status: 'sent' as const, sent_at: new Date().toISOString() } : p
+    ))
+
     try {
       await api.execute(promptId, selectedAgent)
-      await onUpdate()
     } catch (err: unknown) {
+      // Rollback to previous status
+      if (snapshot) {
+        setPrompts(prev => prev.map(p => p.id === promptId ? snapshot : p))
+      }
       setError(err instanceof Error ? err.message : 'Failed to execute')
     } finally {
       setExecuting(null)
