@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { loadLLMConfig, isValidProvider, ProviderName } from "../llm/config";
+import { trackExecutionStarted, trackExecutionCompleted } from "../telemetry/telemetryService";
 import { createProvider } from "../llm/index";
 import { toolDefinitions } from "../llm/tools";
 import { SYSTEM_PROMPT } from "../llm/system-prompt";
@@ -95,9 +96,17 @@ export function registerChatRoutes(app: FastifyInstance) {
     sendSSE("conversation", { id: conversationId });
 
     const provider = createProvider(providerName, effectiveConfig);
+    const telemetryExecId = trackExecutionStarted({
+      agent_id: "chat",
+      prompt_id: conversationId,
+      session_id: conversationId,
+      model,
+      provider: providerName,
+    });
     let iterations = 0;
     let fullContent = "";
     let allToolCalls: ToolCall[] = [];
+    let totalUsage: { input_tokens?: number; output_tokens?: number } | undefined;
 
     try {
       while (iterations < MAX_TOOL_ITERATIONS) {
@@ -124,7 +133,12 @@ export function registerChatRoutes(app: FastifyInstance) {
               reply.raw.end();
               return;
             case "done":
-              // handled below
+              if (event.usage) {
+                totalUsage = {
+                  input_tokens: (totalUsage?.input_tokens ?? 0) + (event.usage.input_tokens ?? 0),
+                  output_tokens: (totalUsage?.output_tokens ?? 0) + (event.usage.output_tokens ?? 0),
+                };
+              }
               break;
           }
         }
@@ -171,6 +185,7 @@ export function registerChatRoutes(app: FastifyInstance) {
       // Update conversation timestamp
       await updateConversation(conversationId, {});
 
+      trackExecutionCompleted(telemetryExecId, totalUsage);
       sendSSE("done", { conversation_id: conversationId });
     } catch (err) {
       sendSSE("error", { error: err instanceof Error ? err.message : "Internal error" });

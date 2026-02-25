@@ -12,6 +12,7 @@ import {
   listSnippetCollections,
   deleteSnippetCollection,
 } from "../firestore/snippet-collections";
+import { logActivity } from "../middleware/activityLogger";
 
 export function registerSnippetRoutes(app: FastifyInstance) {
   // --- Snippets ---
@@ -36,6 +37,16 @@ export function registerSnippetRoutes(app: FastifyInstance) {
       content: body.content,
       collection_id: typeof body.collection_id === "string" ? body.collection_id : null,
     });
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet",
+      entity_id: snippet.id,
+      action_type: "create",
+      metadata: { before_state: null, after_state: snippet as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
     return reply.status(201).send(snippet);
   });
 
@@ -69,7 +80,18 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     }
 
     await updateSnippet(id, updates);
-    return { ...existing, ...updates };
+    const afterState = { ...existing, ...updates };
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet",
+      entity_id: id,
+      action_type: "update",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: afterState as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
+    return afterState;
   });
 
   app.delete("/snippets/:id", async (req, reply) => {
@@ -81,6 +103,16 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     }
 
     await deleteSnippet(id);
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet",
+      entity_id: id,
+      action_type: "delete",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null },
+      actor: "user",
+    });
+
     return reply.status(204).send();
   });
 
@@ -97,11 +129,21 @@ export function registerSnippetRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "name is required" });
     }
 
-    const collection = await createSnippetCollection({
+    const snippetCollection = await createSnippetCollection({
       name: body.name,
       description: typeof body.description === "string" ? body.description : "",
     });
-    return reply.status(201).send(collection);
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet_collection",
+      entity_id: snippetCollection.id,
+      action_type: "create",
+      metadata: { before_state: null, after_state: snippetCollection as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
+    return reply.status(201).send(snippetCollection);
   });
 
   app.delete("/snippet-collections/:id", async (req, reply) => {
@@ -113,6 +155,16 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     }
 
     await deleteSnippetCollection(id);
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet_collection",
+      entity_id: id,
+      action_type: "delete",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null },
+      actor: "user",
+    });
+
     return reply.status(204).send();
   });
 }

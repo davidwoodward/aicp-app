@@ -14,6 +14,15 @@ import {
 import { createMessage, MessageRole } from "../firestore/messages";
 import { updatePromptStatus } from "../firestore/prompts";
 import { endSession } from "../firestore/sessions";
+import {
+  addUIClient,
+  trackAgentConnected,
+  trackAgentDisconnected,
+  trackAgentStatus,
+  trackExecutionStarted,
+  trackExecutionCompleted,
+  findExecutionBySession,
+} from "../telemetry/telemetryService";
 
 interface RegisterMsg {
   type: "register";
@@ -43,6 +52,7 @@ interface ExecutionCompleteMsg {
   type: "execution_complete";
   prompt_id: string;
   session_id: string;
+  token_usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 type AgentMessage = RegisterMsg | HeartbeatMsg | StatusMsg | MessageMsg | ExecutionCompleteMsg;
@@ -51,6 +61,7 @@ const VALID_STATUSES: AgentStatus[] = ["idle", "busy", "offline"];
 const VALID_ROLES: MessageRole[] = ["user", "claude"];
 
 export function registerWebSocket(app: FastifyInstance) {
+  // Agent communication channel
   app.get("/ws", { websocket: true }, (socket) => {
     let agentId: string | null = null;
 
@@ -97,6 +108,7 @@ export function registerWebSocket(app: FastifyInstance) {
             agentId = msg.agent_id;
 
             await updateAgentStatus(msg.agent_id, "idle");
+            trackAgentConnected(msg.agent_id, msg.project_id);
             app.log.info({ agent_id: msg.agent_id, project_id: msg.project_id }, "Agent registered");
             socket.send(JSON.stringify({ type: "registered", agent_id: msg.agent_id }));
             break;
@@ -115,6 +127,7 @@ export function registerWebSocket(app: FastifyInstance) {
             }
             setAgentStatus(agentId!, msg.status);
             await updateAgentStatus(agentId!, msg.status);
+            trackAgentStatus(agentId!, msg.status);
             app.log.info({ agent_id: agentId, status: msg.status }, "Agent status updated");
             break;
           }
@@ -145,6 +158,14 @@ export function registerWebSocket(app: FastifyInstance) {
             await endSession(msg.session_id);
             setAgentStatus(agentId!, "idle");
             await updateAgentStatus(agentId!, "idle");
+
+            // Complete telemetry tracking
+            const execId = findExecutionBySession(msg.session_id);
+            if (execId) {
+              trackExecutionCompleted(execId, msg.token_usage);
+            }
+            trackAgentStatus(agentId!, "idle");
+
             app.log.info({ agent_id: agentId, prompt_id: msg.prompt_id, session_id: msg.session_id }, "Execution complete");
             break;
           }
@@ -167,8 +188,14 @@ export function registerWebSocket(app: FastifyInstance) {
         } catch (err) {
           app.log.error({ err, agent_id: removedId }, "Error setting agent offline");
         }
+        trackAgentDisconnected(removedId);
         app.log.info({ agent_id: removedId }, "Agent disconnected");
       }
     });
+  });
+
+  // Telemetry broadcast channel for UI clients
+  app.get("/ws/telemetry", { websocket: true }, (socket) => {
+    addUIClient(socket);
   });
 }
