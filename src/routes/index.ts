@@ -5,6 +5,9 @@ import { registerConversationRoutes } from "./conversations";
 import { registerSnippetRoutes } from "./snippets";
 import { registerModelRoutes } from "./models";
 import { registerChatRoutes } from "./chat";
+import { registerRestoreRoutes } from "./restore";
+import { registerPlanRoutes } from "./plan";
+import { registerActivityLogRoutes } from "./activity-logs";
 
 export function registerRoutes(app: FastifyInstance) {
   app.register(
@@ -19,6 +22,9 @@ export function registerRoutes(app: FastifyInstance) {
       registerSnippetRoutes(api);
       registerModelRoutes(api);
       registerChatRoutes(api);
+      registerRestoreRoutes(api);
+      registerPlanRoutes(api);
+      registerActivityLogRoutes(api);
     },
     { prefix: "/api" }
   );

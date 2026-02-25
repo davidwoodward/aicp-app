@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import { prompts as api, type Prompt } from '../api'
 import StatusBadge from '../components/StatusBadge'
 
 interface Props {
   projectId: string
   prompts: Prompt[]
-  onUpdate: () => Promise<void>
+  setPrompts: Dispatch<SetStateAction<Prompt[]>>
 }
 
 function buildTree(items: Prompt[], parentId: string | null = null): Prompt[] {
@@ -88,7 +88,7 @@ function TreeNode({
   )
 }
 
-export default function PromptTree({ projectId, prompts, onUpdate }: Props) {
+export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
   const [editing, setEditing] = useState<Prompt | null>(null)
   const [creating, setCreating] = useState<{ parentId: string | null } | null>(null)
   const [title, setTitle] = useState('')
@@ -123,23 +123,58 @@ export default function PromptTree({ projectId, prompts, onUpdate }: Props) {
     setError('')
     try {
       if (editing) {
+        // Optimistic update
         const updates: Record<string, unknown> = { title, body }
         if (status && status !== editing.status) updates.status = status
-        await api.update(editing.id, updates)
+        const snapshot = editing
+        const optimistic = { ...editing, title, body, ...(status && status !== editing.status ? { status: status as Prompt['status'] } : {}) }
+        setPrompts(prev => prev.map(p => p.id === editing.id ? optimistic : p))
+        setEditing(null)
+        setCreating(null)
+        try {
+          const saved = await api.update(snapshot.id, updates)
+          setPrompts(prev => prev.map(p => p.id === saved.id ? saved : p))
+        } catch (err: unknown) {
+          setPrompts(prev => prev.map(p => p.id === snapshot.id ? snapshot : p))
+          setError(err instanceof Error ? err.message : 'Failed to save')
+          setEditing(snapshot)
+          setTitle(snapshot.title)
+          setBody(snapshot.body)
+          setStatus(snapshot.status)
+        }
       } else if (creating) {
-        await api.create({
+        // Optimistic create with temp ID
+        const tempId = `temp-${crypto.randomUUID()}`
+        const optimistic: Prompt = {
+          id: tempId,
           project_id: projectId,
           title,
           body,
+          status: 'draft',
           order_index: prompts.length,
           parent_prompt_id: creating.parentId,
-        })
+          agent_id: null,
+          created_at: new Date().toISOString(),
+          sent_at: null,
+          done_at: null,
+        }
+        setPrompts(prev => [...prev, optimistic])
+        setEditing(null)
+        setCreating(null)
+        try {
+          const saved = await api.create({
+            project_id: projectId,
+            title,
+            body,
+            order_index: prompts.length,
+            parent_prompt_id: creating.parentId,
+          })
+          setPrompts(prev => prev.map(p => p.id === tempId ? saved : p))
+        } catch (err: unknown) {
+          setPrompts(prev => prev.filter(p => p.id !== tempId))
+          setError(err instanceof Error ? err.message : 'Failed to create')
+        }
       }
-      setEditing(null)
-      setCreating(null)
-      await onUpdate()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setSaving(false)
     }
@@ -148,11 +183,14 @@ export default function PromptTree({ projectId, prompts, onUpdate }: Props) {
   async function handleDelete() {
     if (!editing) return
     setSaving(true)
+    // Optimistic delete
+    const snapshot = editing
+    setPrompts(prev => prev.filter(p => p.id !== snapshot.id))
+    setEditing(null)
     try {
-      await api.delete(editing.id)
-      setEditing(null)
-      await onUpdate()
+      await api.delete(snapshot.id)
     } catch (err: unknown) {
+      setPrompts(prev => [...prev, snapshot])
       setError(err instanceof Error ? err.message : 'Failed to delete')
     } finally {
       setSaving(false)

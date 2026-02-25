@@ -22,14 +22,29 @@ export default function ProjectList() {
     e.preventDefault()
     setCreating(true)
     setError('')
+
+    // Optimistic create with temp ID
+    const tempId = `temp-${crypto.randomUUID()}`
+    const optimistic: Project = {
+      id: tempId,
+      name,
+      description,
+      created_at: new Date().toISOString(),
+    }
+    setList(prev => [optimistic, ...prev])
+    setName('')
+    setDescription('')
+    setShowCreate(false)
+
     try {
-      const p = await projects.create({ name, description })
-      setList((prev) => [p, ...prev])
-      setName('')
-      setDescription('')
-      setShowCreate(false)
+      const saved = await projects.create({ name: optimistic.name, description: optimistic.description })
+      setList(prev => prev.map(p => p.id === tempId ? saved : p))
     } catch (err: unknown) {
+      setList(prev => prev.filter(p => p.id !== tempId))
       setError(err instanceof Error ? err.message : 'Failed to create')
+      setName(optimistic.name)
+      setDescription(optimistic.description)
+      setShowCreate(true)
     } finally {
       setCreating(false)
     }

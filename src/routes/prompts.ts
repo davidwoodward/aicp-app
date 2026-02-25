@@ -12,6 +12,8 @@ import {
 import { createSession } from "../firestore/sessions";
 import { getAgent, sendToAgent } from "../websocket/agentRegistry";
 import { db } from "../firestore/client";
+import { logActivity } from "../middleware/activityLogger";
+import { trackExecutionStarted } from "../telemetry/telemetryService";
 
 const VALID_STATUSES: PromptStatus[] = ["draft", "ready", "sent", "done"];
 
@@ -42,6 +44,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
       }
     }
 
+    const beforeOrder = promptIds.map((id) => ({ id, order_index: promptMap.get(id)!.order_index }));
+
     // Batch update order_index sequentially
     const batch = db.batch();
     const collection = db.collection("prompts");
@@ -51,6 +55,18 @@ export function registerPromptRoutes(app: FastifyInstance) {
     }
 
     await batch.commit();
+
+    const afterOrder = promptIds.map((id, i) => ({ id, order_index: i }));
+
+    await logActivity({
+      project_id: body.project_id,
+      entity_type: "prompt",
+      entity_id: body.project_id,
+      action_type: "reorder",
+      metadata: { before_state: { order: beforeOrder }, after_state: { order: afterOrder } },
+      actor: "user",
+    });
+
     return { reordered: promptIds.length };
   });
 
@@ -97,6 +113,25 @@ export function registerPromptRoutes(app: FastifyInstance) {
     await updatePromptStatus(id, "sent");
     await assignAgent(id, body.agent_id);
 
+    trackExecutionStarted({
+      agent_id: body.agent_id,
+      prompt_id: id,
+      session_id: session.id,
+    });
+
+    await logActivity({
+      project_id: prompt.project_id,
+      entity_type: "prompt",
+      entity_id: id,
+      action_type: "execute",
+      metadata: {
+        before_state: { status: prompt.status, agent_id: prompt.agent_id },
+        after_state: { status: "sent", agent_id: body.agent_id },
+        session_id: session.id,
+      },
+      actor: "user",
+    });
+
     return {
       prompt_id: id,
       session_id: session.id,
@@ -133,6 +168,16 @@ export function registerPromptRoutes(app: FastifyInstance) {
       body: body.body,
       order_index: body.order_index,
     });
+
+    await logActivity({
+      project_id: body.project_id,
+      entity_type: "prompt",
+      entity_id: prompt.id,
+      action_type: "create",
+      metadata: { before_state: null, after_state: prompt as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
     return reply.status(201).send(prompt);
   });
 
@@ -154,6 +199,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     if (!existing) {
       return reply.status(404).send({ error: "prompt not found" });
     }
+
+    const beforeState = { ...existing } as unknown as Record<string, unknown>;
 
     // Handle status transition separately
     if (body.status !== undefined) {
@@ -192,6 +239,20 @@ export function registerPromptRoutes(app: FastifyInstance) {
     }
 
     const updated = await getPrompt(id);
+
+    const actionType = body.status !== undefined && Object.keys(updates).length === 0
+      ? "status_change" as const
+      : "update" as const;
+
+    await logActivity({
+      project_id: existing.project_id,
+      entity_type: "prompt",
+      entity_id: id,
+      action_type: actionType,
+      metadata: { before_state: beforeState, after_state: updated as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
     return updated;
   });
 
@@ -204,6 +265,16 @@ export function registerPromptRoutes(app: FastifyInstance) {
     }
 
     await deletePrompt(id);
+
+    await logActivity({
+      project_id: existing.project_id,
+      entity_type: "prompt",
+      entity_id: id,
+      action_type: "delete",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null },
+      actor: "user",
+    });
+
     return reply.status(204).send();
   });
 }

@@ -11,6 +11,7 @@ import {
   deleteChatMessagesByConversation,
 } from "../firestore/chat-messages";
 import { loadLLMConfig } from "../llm/config";
+import { logActivity } from "../middleware/activityLogger";
 
 export function registerConversationRoutes(app: FastifyInstance) {
   app.get("/conversations", async () => {
@@ -28,6 +29,16 @@ export function registerConversationRoutes(app: FastifyInstance) {
       : config.providers[provider as keyof typeof config.providers]?.model || "";
 
     const conversation = await createConversation({ title, model, provider });
+
+    await logActivity({
+      project_id: null,
+      entity_type: "conversation",
+      entity_id: conversation.id,
+      action_type: "create",
+      metadata: { before_state: null, after_state: conversation as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
     return reply.status(201).send(conversation);
   });
 
@@ -59,7 +70,18 @@ export function registerConversationRoutes(app: FastifyInstance) {
     }
 
     await updateConversation(id, updates);
-    return { ...existing, ...updates };
+    const afterState = { ...existing, ...updates };
+
+    await logActivity({
+      project_id: null,
+      entity_type: "conversation",
+      entity_id: id,
+      action_type: "update",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: afterState as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
+    return afterState;
   });
 
   app.delete("/conversations/:id", async (req, reply) => {
@@ -72,6 +94,16 @@ export function registerConversationRoutes(app: FastifyInstance) {
 
     await deleteChatMessagesByConversation(id);
     await deleteConversation(id);
+
+    await logActivity({
+      project_id: null,
+      entity_type: "conversation",
+      entity_id: id,
+      action_type: "delete",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null },
+      actor: "user",
+    });
+
     return reply.status(204).send();
   });
 

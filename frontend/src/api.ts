@@ -90,6 +90,8 @@ export interface ModelInfo {
 
 export interface ModelsResponse {
   default_provider: string;
+  selected_provider: string | null;
+  selected_model: string | null;
   providers: ModelInfo[];
 }
 
@@ -186,6 +188,11 @@ export const conversations = {
 
 export const models = {
   list: () => request<ModelsResponse>('/models'),
+  select: (provider: string, model: string) =>
+    request<{ provider: string; model: string }>('/models/select', {
+      method: 'POST',
+      body: JSON.stringify({ provider, model }),
+    }),
 };
 
 // --- Snippets ---
@@ -208,6 +215,67 @@ export const snippetCollections = {
     request<SnippetCollection>('/snippet-collections', { method: 'POST', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/snippet-collections/${id}`, { method: 'DELETE' }),
+};
+
+// --- Activity Logs ---
+
+export type EntityType = 'project' | 'prompt' | 'conversation' | 'snippet' | 'snippet_collection';
+export type ActionType = 'create' | 'update' | 'delete' | 'status_change' | 'reorder' | 'execute' | 'restored';
+export type Actor = 'user' | 'system' | 'llm';
+
+export interface ActivityLog {
+  id: string;
+  project_id: string | null;
+  entity_type: EntityType;
+  entity_id: string;
+  action_type: ActionType;
+  metadata: {
+    before_state?: Record<string, unknown> | null;
+    after_state?: Record<string, unknown> | null;
+    [key: string]: unknown;
+  };
+  created_at: string;
+  actor: Actor;
+}
+
+export interface RestoreResult {
+  restored: boolean;
+  entity_type: EntityType;
+  entity_id: string;
+  restored_from_event: string;
+  entity: Record<string, unknown>;
+}
+
+export const activityLogs = {
+  list: (filters?: { entity_type?: EntityType; entity_id?: string; project_id?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.entity_type) params.set('entity_type', filters.entity_type);
+    if (filters?.entity_id) params.set('entity_id', filters.entity_id);
+    if (filters?.project_id) params.set('project_id', filters.project_id);
+    const qs = params.toString();
+    return request<ActivityLog[]>(`/activity-logs${qs ? `?${qs}` : ''}`);
+  },
+  restore: (eventId: string) =>
+    request<RestoreResult>(`/restore/${eventId}`, { method: 'POST' }),
+};
+
+// --- Planning Assist ---
+
+export interface PlanResult {
+  action: string;
+  payload: Record<string, unknown>;
+}
+
+export interface PlanApplyResult {
+  action: string;
+  result: unknown;
+}
+
+export const plan = {
+  interpret: (message: string) =>
+    request<PlanResult>('/plan', { method: 'POST', body: JSON.stringify({ message }) }),
+  apply: (action: string, payload: Record<string, unknown>) =>
+    request<PlanApplyResult>('/plan/apply', { method: 'POST', body: JSON.stringify({ action, payload }) }),
 };
 
 // --- Chat SSE ---

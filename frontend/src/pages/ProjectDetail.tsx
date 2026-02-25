@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, NavLink, useParams, Navigate } from 'react-router-dom'
-import { projects, prompts, type Project, type Prompt } from '../api'
+import { projects, prompts as promptsApi, type Project, type Prompt } from '../api'
 import PromptTree from './PromptTree'
 import TaskList from './TaskList'
 import PromptHistory from './PromptHistory'
+import ActivityTab from '../components/ActivityTab'
 
 const tabs = [
   { path: 'prompts', label: 'Prompts' },
   { path: 'tasks', label: 'Task List' },
   { path: 'history', label: 'History' },
+  { path: 'activity', label: 'Activity' },
 ]
 
 export default function ProjectDetail() {
@@ -17,17 +19,28 @@ export default function ProjectDetail() {
   const [promptList, setPromptList] = useState<Prompt[]>([])
   const [loading, setLoading] = useState(true)
 
-  async function reload() {
+  // Initial load only — children never trigger this
+  useEffect(() => {
     if (!projectId) return
-    const p = await projects.get(projectId)
+    Promise.all([
+      projects.get(projectId),
+      promptsApi.list(projectId).catch(() => []),
+    ]).then(([p, prList]) => {
+      setProject(p)
+      setPromptList(prList)
+    }).finally(() => setLoading(false))
+  }, [projectId])
+
+  // Full reload — only used by ActivityTab after a restore (infrequent, user-initiated)
+  async function reloadAfterRestore() {
+    if (!projectId) return
+    const [p, prList] = await Promise.all([
+      projects.get(projectId),
+      promptsApi.list(projectId).catch(() => []),
+    ])
     setProject(p)
-    const prList = await prompts.list(projectId).catch(() => [])
     setPromptList(prList)
   }
-
-  useEffect(() => {
-    reload().finally(() => setLoading(false))
-  }, [projectId])
 
   if (loading) {
     return <div className="text-text-muted font-mono text-sm animate-pulse">Loading...</div>
@@ -67,9 +80,10 @@ export default function ProjectDetail() {
       {/* Tab content */}
       <Routes>
         <Route index element={<Navigate to="prompts" replace />} />
-        <Route path="prompts" element={<PromptTree projectId={projectId!} prompts={promptList} onUpdate={reload} />} />
-        <Route path="tasks" element={<TaskList projectId={projectId!} prompts={promptList} onUpdate={reload} />} />
+        <Route path="prompts" element={<PromptTree projectId={projectId!} prompts={promptList} setPrompts={setPromptList} />} />
+        <Route path="tasks" element={<TaskList projectId={projectId!} prompts={promptList} setPrompts={setPromptList} />} />
         <Route path="history" element={<PromptHistory projectId={projectId!} prompts={promptList} />} />
+        <Route path="activity" element={<ActivityTab entityType="project" projectId={projectId!} onRestored={reloadAfterRestore} />} />
       </Routes>
     </div>
   )
