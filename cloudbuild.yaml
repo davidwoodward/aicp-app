@@ -36,8 +36,8 @@ steps:
 substitutions:
   _REGION: us-central1
   _REPOSITORY: us-central1-docker.pkg.dev/aicp-dev/aicp
-  _SERVICE: aicp-backend
-  _IMAGE: aicp-backend
+  _SERVICE: aicp
+  _IMAGE: aicp
 
 options:
   logging: CLOUD_LOGGING_ONLY

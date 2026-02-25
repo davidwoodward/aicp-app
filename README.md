@@ -73,17 +73,17 @@ Connect to `ws://localhost:8080/ws`. Messages are echoed back as JSON:
 Build and run locally:
 
 ```bash
-docker build -t aicp-backend .
-docker run -p 8080:8080 aicp-backend
+docker build -t aicp .
+docker run -p 8080:8080 aicp
 ```
 
 ## Deployment
 
 This service deploys to Cloud Run in the `aicp-dev` GCP project. Infrastructure is managed in [`../aicp-infra`](../aicp-infra).
 
-- **Cloud Run service**: `aicp-backend`
+- **Cloud Run service**: `aicp`
 - **Region**: `us-central1`
-- **Image registry**: `us-central1-docker.pkg.dev/aicp-dev/aicp/aicp-backend`
+- **Image registry**: `us-central1-docker.pkg.dev/aicp-dev/aicp/aicp`
 - **Port**: 8080
 
 ## Project Structure
