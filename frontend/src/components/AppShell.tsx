@@ -90,11 +90,13 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
         {/* Cmd+K trigger */}
         <button
           onClick={() => setCmdkOpen(true)}
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface-2 hover:border-border-bright transition-colors"
-          style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-text-muted)' }}
+          className="flex items-center px-1.5 py-0.5 rounded border border-border bg-surface-2 hover:border-border-bright transition-colors"
+          title={navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K'}
         >
-          <span>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+'}K</span>
-          <span className="text-text-muted opacity-80">search</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
         </button>
 
         <ThemeToggle />
