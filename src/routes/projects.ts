@@ -7,6 +7,7 @@ import {
   deleteProject,
 } from "../firestore/projects";
 import { logActivity } from "../middleware/activityLogger";
+import { computeTreeMetrics } from "../services/planMetrics";
 
 export function registerProjectRoutes(app: FastifyInstance) {
   app.post("/projects", async (req, reply) => {
@@ -86,6 +87,15 @@ export function registerProjectRoutes(app: FastifyInstance) {
     });
 
     return afterState;
+  });
+
+  app.get("/projects/:id/tree-metrics", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const project = await getProject(id);
+    if (!project) {
+      return reply.status(404).send({ error: "project not found" });
+    }
+    return computeTreeMetrics(id);
   });
 
   app.delete("/projects/:id", async (req, reply) => {

@@ -1,13 +1,21 @@
 import { FastifyInstance } from "fastify";
 import { loadLLMConfig, isValidProvider } from "../llm/config";
 import { getSetting, upsertSetting } from "../firestore/settings";
+import {
+  getProviderStatuses,
+  getRegistrySnapshot,
+  setTenantOverride,
+  RegistryError,
+} from "../llm/modelRegistry";
 
 interface SelectBody {
   provider: string;
   model: string;
+  tenant_id?: string;
 }
 
 export function registerModelRoutes(app: FastifyInstance) {
+  // ── GET /models — existing endpoint (unchanged response shape) ────────
   app.get("/models", async () => {
     const config = loadLLMConfig();
     const setting = await getSetting("execution_llm").catch(() => null);
@@ -24,23 +32,35 @@ export function registerModelRoutes(app: FastifyInstance) {
     };
   });
 
+  // ── GET /models/status — provider status with available models ────────
+  app.get("/models/status", async () => {
+    return getProviderStatuses();
+  });
+
+  // ── GET /models/registry — full snapshot with tenant overrides ────────
+  app.get<{ Querystring: { tenant_id?: string } }>(
+    "/models/registry",
+    async (req) => {
+      const tenantId = req.query.tenant_id;
+      return getRegistrySnapshot(tenantId);
+    },
+  );
+
+  // ── POST /models/select — save tenant model override ──────────────────
   app.post<{ Body: SelectBody }>("/models/select", async (req, reply) => {
-    const { provider, model } = req.body;
+    const { provider, model, tenant_id } = req.body;
     if (!provider || !model) {
       return reply.status(400).send({ error: "provider and model are required" });
     }
-    const config = loadLLMConfig();
-    if (!isValidProvider(provider)) {
-      return reply.status(400).send({ error: `Unknown provider: ${provider}` });
+
+    try {
+      const override = await setTenantOverride(provider, model, tenant_id);
+      return { provider: override.provider, model: override.model };
+    } catch (err) {
+      if (err instanceof RegistryError) {
+        return reply.status(400).send({ error: err.message });
+      }
+      throw err;
     }
-    if (!config.providers[provider].configured) {
-      return reply.status(400).send({ error: `Provider ${provider} is not configured` });
-    }
-    await upsertSetting("execution_llm", {
-      provider,
-      model,
-      updated_at: Date.now(),
-    });
-    return { provider, model };
   });
 }

@@ -21,6 +21,12 @@ export interface ActivityLog {
   actor: Actor;
 }
 
+export interface PaginatedLogs {
+  logs: ActivityLog[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 export async function logActivity(
   data: Omit<ActivityLog, "id" | "created_at">
 ): Promise<ActivityLog> {
@@ -38,7 +44,10 @@ export async function listActivityLogs(filters?: {
   entity_type?: EntityType;
   entity_id?: string;
   project_id?: string;
-}): Promise<ActivityLog[]> {
+  since?: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<PaginatedLogs> {
   let query = collection.orderBy("created_at", "desc") as FirebaseFirestore.Query;
 
   if (filters?.entity_type) {
@@ -50,9 +59,31 @@ export async function listActivityLogs(filters?: {
   if (filters?.project_id) {
     query = query.where("project_id", "==", filters.project_id);
   }
+  if (filters?.since) {
+    query = query.where("created_at", ">=", filters.since);
+  }
 
-  const snapshot = await query.limit(200).get();
-  return snapshot.docs.map((doc) => doc.data() as ActivityLog);
+  // Cursor-based pagination: start after the cursor timestamp
+  if (filters?.cursor) {
+    query = query.startAfter(filters.cursor);
+  }
+
+  const cap = filters?.limit && filters.limit > 0 ? Math.min(filters.limit, 500) : 50;
+  // Fetch one extra to determine has_more
+  const snapshot = await query.limit(cap + 1).get();
+  const docs = snapshot.docs.map((doc) => doc.data() as ActivityLog);
+
+  const hasMore = docs.length > cap;
+  const page = hasMore ? docs.slice(0, cap) : docs;
+  const nextCursor = hasMore && page.length > 0
+    ? page[page.length - 1].created_at
+    : null;
+
+  return {
+    logs: page,
+    next_cursor: nextCursor,
+    has_more: hasMore,
+  };
 }
 
 export async function getActivityLog(id: string): Promise<ActivityLog | null> {

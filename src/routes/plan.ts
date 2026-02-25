@@ -67,7 +67,7 @@ export function registerPlanRoutes(app: FastifyInstance) {
         payload,
         after_state: resultObj,
       },
-      actor: "user",
+      actor: "llm",
     }).catch(() => {}); // best-effort logging
 
     return { action, result };

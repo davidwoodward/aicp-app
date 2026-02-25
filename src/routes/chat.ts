@@ -15,8 +15,38 @@ import {
   createChatMessage,
   listChatMessagesByConversation,
 } from "../firestore/chat-messages";
+import { logActivity } from "../middleware/activityLogger";
 
 const MAX_TOOL_ITERATIONS = 10;
+
+const TOOL_ENTITY_MAP: Record<string, { entity_type: string; getProjectId: (args: Record<string, unknown>) => string | null }> = {
+  create_project: { entity_type: "project", getProjectId: () => null },
+  add_prompt: { entity_type: "prompt", getProjectId: (a) => (a.project_id as string) ?? null },
+  create_snippet: { entity_type: "snippet", getProjectId: () => null },
+  create_snippet_collection: { entity_type: "snippet_collection", getProjectId: () => null },
+};
+
+async function logToolActivity(tc: ToolCall, result: string): Promise<void> {
+  const mapping = TOOL_ENTITY_MAP[tc.name];
+  if (!mapping) return; // read-only tool, no logging needed
+
+  try {
+    const args = JSON.parse(tc.arguments);
+    const entity = JSON.parse(result);
+    if (entity.error) return; // tool returned an error
+
+    await logActivity({
+      project_id: mapping.getProjectId(args) ?? entity.project_id ?? entity.id ?? "",
+      entity_type: mapping.entity_type as "project" | "prompt" | "snippet",
+      entity_id: entity.id ?? "",
+      action_type: "create",
+      metadata: { before_state: null, after_state: entity },
+      actor: "llm",
+    });
+  } catch {
+    // Don't fail the chat stream if activity logging fails
+  }
+}
 
 export function registerChatRoutes(app: FastifyInstance) {
   app.post("/chat", async (req, reply) => {
@@ -163,6 +193,9 @@ export function registerChatRoutes(app: FastifyInstance) {
         for (const tc of iterationToolCalls) {
           const result = await executeTool(tc);
           sendSSE("tool_result", { tool_call_id: tc.id, name: tc.name, result });
+
+          // Log activity for mutating tool calls
+          await logToolActivity(tc, result);
 
           llmMessages.push({
             role: "tool",

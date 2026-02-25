@@ -90,6 +90,9 @@ export function registerPromptRoutes(app: FastifyInstance) {
     if (!agent) {
       return reply.status(404).send({ error: "agent not connected" });
     }
+    if (agent.project_id !== prompt.project_id) {
+      return reply.status(403).send({ error: "agent does not belong to this prompt's project" });
+    }
     if (agent.status !== "idle") {
       return reply.status(409).send({ error: `agent is "${agent.status}", must be "idle"` });
     }
