@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { projects as projectsApi, prompts as promptsApi, conversations as convsApi } from '../api'
-import type { Project, Prompt, Conversation } from '../api'
+import type { Project, Prompt, Conversation, PromptMetrics, DayActivity } from '../api'
+import { useTreeMetrics } from '../hooks/useTreeMetrics'
 
 interface Props {
   onProjectSelect: (projectId: string | null) => void
@@ -14,50 +15,44 @@ const STATUS_COLOR: Record<string, string> = {
   done:    'var(--color-status-done)',
 }
 
-const HEAT_BORDER: Record<number, string> = {
-  0: 'transparent',
-  1: 'rgba(110, 231, 183, 0.25)',
-  2: 'rgba(110, 231, 183, 0.55)',
-  3: 'rgba(110, 231, 183, 0.90)',
+const HEAT_BORDER: Record<string, string> = {
+  neutral: 'transparent',
+  light: 'rgba(110, 231, 183, 0.25)',
+  medium: 'rgba(110, 231, 183, 0.55)',
+  strong: 'rgba(110, 231, 183, 0.90)',
 }
 
-const HEAT_BG: Record<number, string> = {
-  0: 'transparent',
-  1: 'rgba(110, 231, 183, 0.02)',
-  2: 'rgba(110, 231, 183, 0.05)',
-  3: 'rgba(110, 231, 183, 0.10)',
+const HEAT_BG: Record<string, string> = {
+  neutral: 'transparent',
+  light: 'rgba(110, 231, 183, 0.02)',
+  medium: 'rgba(110, 231, 183, 0.05)',
+  strong: 'rgba(110, 231, 183, 0.10)',
 }
 
-function getHeatLevel(executionCount: number): 0 | 1 | 2 | 3 {
-  if (executionCount === 0) return 0
-  if (executionCount <= 2) return 1
-  if (executionCount <= 5) return 2
-  return 3
+const HEAT_RANK: Record<string, number> = { neutral: 0, light: 1, medium: 2, strong: 3 }
+
+function maxHeatLevel(metrics: PromptMetrics[]): string {
+  let max = 'neutral'
+  for (const m of metrics) {
+    if ((HEAT_RANK[m.heatmap_level] ?? 0) > (HEAT_RANK[max] ?? 0)) max = m.heatmap_level
+  }
+  return max
 }
 
-function isStale(prompt: Prompt): boolean {
-  if (prompt.status !== 'draft' && prompt.status !== 'ready') return false
-  const anchor = prompt.done_at ?? prompt.sent_at ?? prompt.created_at
-  if (!anchor) return false
-  const age = Date.now() - new Date(anchor).getTime()
-  return age > 7 * 24 * 60 * 60 * 1000
-}
-
-// Returns counts per day for the last 7 days (index 0 = oldest, 6 = today)
-function getSparklineData(prompts: Prompt[]): number[] {
-  const bins = new Array(7).fill(0)
-  const now = Date.now()
-  for (const p of prompts) {
-    const dates = [p.done_at, p.sent_at, p.created_at].filter(Boolean) as string[]
-    for (const d of dates) {
-      const age = now - new Date(d).getTime()
-      const dayIdx = Math.floor(age / (24 * 60 * 60 * 1000))
-      if (dayIdx >= 0 && dayIdx < 7) {
-        bins[6 - dayIdx]++
-      }
+function aggregateSparkline(timelines: Map<string, DayActivity[]>): number[] {
+  const dayCounts = new Map<string, number>()
+  for (const timeline of timelines.values()) {
+    for (const d of timeline) {
+      dayCounts.set(d.date, (dayCounts.get(d.date) ?? 0) + d.count)
     }
   }
-  return bins
+  const sorted = Array.from(dayCounts.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-7)
+    .map(([, count]) => count)
+  // Pad to 7 entries
+  while (sorted.length < 7) sorted.unshift(0)
+  return sorted
 }
 
 function Sparkline({ data }: { data: number[] }) {
@@ -122,16 +117,18 @@ interface PromptNodeProps {
   depth: number
   onReorder: (projectId: string, prompts: Prompt[]) => void
   allProjectPrompts: Prompt[]
+  metricsMap: Map<string, PromptMetrics>
 }
 
-function PromptNode({ prompt, allPrompts, projectId, depth, onReorder, allProjectPrompts }: PromptNodeProps) {
+function PromptNode({ prompt, allPrompts, projectId, depth, onReorder, allProjectPrompts, metricsMap }: PromptNodeProps) {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const dragOverRef = useRef(false)
 
   const children = allPrompts.filter(p => p.parent_prompt_id === prompt.id)
   const hasChildren = children.length > 0
-  const stale = isStale(prompt)
+  const metrics = metricsMap.get(prompt.id)
+  const stale = metrics?.stale ?? false
 
   function handleDragStart(e: React.DragEvent) {
     e.dataTransfer.effectAllowed = 'move'
@@ -232,8 +229,115 @@ function PromptNode({ prompt, allPrompts, projectId, depth, onReorder, allProjec
               depth={depth + 1}
               onReorder={onReorder}
               allProjectPrompts={allProjectPrompts}
+              metricsMap={metricsMap}
             />
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProjectEntry({
+  project,
+  isExpanded,
+  isActive,
+  promptMap,
+  onToggle,
+  onSelect,
+  onReorder,
+}: {
+  project: Project
+  isExpanded: boolean
+  isActive: boolean
+  promptMap: Map<string, Prompt[]>
+  onToggle: (id: string) => void
+  onSelect: (id: string) => void
+  onReorder: (projectId: string, prompts: Prompt[]) => void
+}) {
+  const { metricsMap, timelineMap } = useTreeMetrics(isExpanded ? project.id : null)
+
+  const projectPrompts = promptMap.get(project.id) ?? []
+  const allMetrics = Array.from(metricsMap.values())
+  const heat = maxHeatLevel(allMetrics)
+  const sparkData = aggregateSparkline(timelineMap)
+  const rootPrompts = projectPrompts.filter(p => !p.parent_prompt_id)
+
+  return (
+    <div>
+      {/* Project row */}
+      <div
+        className="flex items-center gap-1.5 px-3 cursor-pointer group"
+        style={{
+          height: '30px',
+          borderLeft: `3px solid ${HEAT_BORDER[heat] ?? 'transparent'}`,
+          background: HEAT_BG[heat] ?? 'transparent',
+          transition: 'border-color 0.2s, background 0.2s',
+        }}
+        onClick={() => { onToggle(project.id); onSelect(project.id) }}
+      >
+        {/* Expand chevron */}
+        <span
+          style={{
+            fontSize: '8px',
+            color: 'var(--color-text-muted)',
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 0.15s ease',
+            display: 'inline-block',
+            width: '10px',
+            flexShrink: 0,
+          }}
+        >
+          ▶
+        </span>
+
+        {/* Folder icon */}
+        <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+          {isExpanded ? '📂' : '📁'}
+        </span>
+
+        <span
+          className="truncate group-hover:text-text-primary transition-colors flex-1"
+          style={{
+            fontSize: '12px',
+            color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+            fontFamily: 'var(--font-mono)',
+            minWidth: 0,
+          }}
+        >
+          {project.name}
+        </span>
+
+        {/* Sparkline — only shown when expanded and prompts loaded */}
+        {isExpanded && projectPrompts.length > 0 && (
+          <Sparkline data={sparkData} />
+        )}
+      </div>
+
+      {/* Prompt children */}
+      {isExpanded && (
+        <div className="tree-branch" style={{ marginLeft: '16px', paddingLeft: '12px' }}>
+          {rootPrompts.length === 0 ? (
+            <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', padding: '4px 0' }}>
+              empty
+            </div>
+          ) : (
+            rootPrompts
+              .slice()
+              .sort((a, b) => a.order_index - b.order_index)
+              .map(prompt => (
+                <PromptNode
+                  key={prompt.id}
+                  prompt={prompt}
+                  allPrompts={projectPrompts}
+                  projectId={project.id}
+                  depth={0}
+                  onReorder={onReorder}
+                  allProjectPrompts={projectPrompts}
+                  metricsMap={metricsMap}
+                />
+              ))
+          )}
         </div>
       )}
     </div>
@@ -314,92 +418,18 @@ export default function PlanTree({ onProjectSelect }: Props) {
             No projects yet
           </div>
         ) : (
-          projectList.map(project => {
-            const projectPrompts = promptMap.get(project.id) ?? []
-            const executionCount = projectPrompts.filter(p => p.status === 'sent' || p.status === 'done').length
-            const heat = getHeatLevel(executionCount)
-            const sparkData = getSparklineData(projectPrompts)
-            const rootPrompts = projectPrompts.filter(p => !p.parent_prompt_id)
-
-            return (
-              <div key={project.id}>
-                {/* Project row */}
-                <div
-                  className="flex items-center gap-1.5 px-3 cursor-pointer group"
-                  style={{
-                    height: '30px',
-                    borderLeft: `3px solid ${HEAT_BORDER[heat]}`,
-                    background: HEAT_BG[heat],
-                    transition: 'border-color 0.2s, background 0.2s',
-                  }}
-                  onClick={() => { toggleProject(project.id); selectProject(project.id) }}
-                >
-                  {/* Expand chevron */}
-                  <span
-                    style={{
-                      fontSize: '8px',
-                      color: 'var(--color-text-muted)',
-                      transform: expanded.has(project.id) ? 'rotate(90deg)' : 'rotate(0deg)',
-                      transition: 'transform 0.15s ease',
-                      display: 'inline-block',
-                      width: '10px',
-                      flexShrink: 0,
-                    }}
-                  >
-                    ▶
-                  </span>
-
-                  {/* Folder icon */}
-                  <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', flexShrink: 0 }}>
-                    {expanded.has(project.id) ? '📂' : '📁'}
-                  </span>
-
-                  <span
-                    className="truncate group-hover:text-text-primary transition-colors flex-1"
-                    style={{
-                      fontSize: '12px',
-                      color: activeProject === project.id ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                      fontFamily: 'var(--font-mono)',
-                      minWidth: 0,
-                    }}
-                  >
-                    {project.name}
-                  </span>
-
-                  {/* Sparkline — only shown when expanded and prompts loaded */}
-                  {expanded.has(project.id) && projectPrompts.length > 0 && (
-                    <Sparkline data={sparkData} />
-                  )}
-                </div>
-
-                {/* Prompt children */}
-                {expanded.has(project.id) && (
-                  <div className="tree-branch" style={{ marginLeft: '16px', paddingLeft: '12px' }}>
-                    {rootPrompts.length === 0 ? (
-                      <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', padding: '4px 0' }}>
-                        empty
-                      </div>
-                    ) : (
-                      rootPrompts
-                        .slice()
-                        .sort((a, b) => a.order_index - b.order_index)
-                        .map(prompt => (
-                          <PromptNode
-                            key={prompt.id}
-                            prompt={prompt}
-                            allPrompts={projectPrompts}
-                            projectId={project.id}
-                            depth={0}
-                            onReorder={handleReorder}
-                            allProjectPrompts={projectPrompts}
-                          />
-                        ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })
+          projectList.map(project => (
+            <ProjectEntry
+              key={project.id}
+              project={project}
+              isExpanded={expanded.has(project.id)}
+              isActive={activeProject === project.id}
+              promptMap={promptMap}
+              onToggle={toggleProject}
+              onSelect={selectProject}
+              onReorder={handleReorder}
+            />
+          ))
         )}
 
         {/* ── CONVERSATIONS section ─────────────────────────── */}

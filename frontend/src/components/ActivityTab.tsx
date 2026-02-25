@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { activityLogs, type ActivityLog, type EntityType } from '../api'
+import { activityLogs, RestoreConflictError, type ActivityLog, type EntityType, type FieldDiff } from '../api'
 import RestoreConfirmModal from './RestoreConfirmModal'
 
 interface Props {
@@ -35,30 +35,18 @@ const ACTOR_LABELS: Record<string, string> = {
   llm: 'llm',
 }
 
-function diffKeys(
-  before: Record<string, unknown> | null | undefined,
-  after: Record<string, unknown> | null | undefined,
-): string[] {
-  if (!before && !after) return []
-  if (!before) return Object.keys(after ?? {})
-  if (!after) return Object.keys(before)
-  const allKeys = new Set([...Object.keys(before), ...Object.keys(after)])
-  const changed: string[] = []
-  for (const k of allKeys) {
-    if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) {
-      changed.push(k)
-    }
-  }
-  return changed
+function formatValue(val: unknown): string {
+  if (val === null || val === undefined) return '—'
+  if (typeof val === 'string') return val
+  return JSON.stringify(val)
 }
 
-function DiffView({ before, after }: {
-  before: Record<string, unknown> | null | undefined;
-  after: Record<string, unknown> | null | undefined;
-}) {
-  const keys = diffKeys(before, after)
+function truncate(str: string, max: number): string {
+  return str.length > max ? str.slice(0, max) + '…' : str
+}
 
-  if (keys.length === 0) {
+function DiffTable({ diffs }: { diffs: FieldDiff[] }) {
+  if (diffs.length === 0) {
     return (
       <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', padding: '6px 0' }}>
         No field changes recorded.
@@ -67,41 +55,71 @@ function DiffView({ before, after }: {
   }
 
   return (
-    <div className="space-y-1.5">
-      {keys.map(key => {
-        const bVal = before?.[key]
-        const aVal = after?.[key]
-        const bStr = bVal === undefined ? '—' : typeof bVal === 'string' ? bVal : JSON.stringify(bVal)
-        const aStr = aVal === undefined ? '—' : typeof aVal === 'string' ? aVal : JSON.stringify(aVal)
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+      <thead>
+        <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <th style={{ textAlign: 'left', padding: '4px 8px', fontSize: '9px', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+            Field
+          </th>
+          <th style={{ textAlign: 'left', padding: '4px 8px', fontSize: '9px', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(239,68,68,0.6)' }}>
+            Before
+          </th>
+          <th style={{ textAlign: 'left', padding: '4px 8px', fontSize: '9px', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(110,231,183,0.6)' }}>
+            After
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {diffs.map((d) => {
+          const bStr = truncate(formatValue(d.before), 120)
+          const aStr = truncate(formatValue(d.after), 120)
+          const isAdded = d.before === null || d.before === undefined
+          const isRemoved = d.after === null || d.after === undefined
 
-        return (
-          <div key={key}>
-            <div style={{ fontSize: '9px', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '2px' }}>
-              {key}
-            </div>
-            <div className="flex gap-2" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}>
-              {before !== undefined && before !== null && (
-                <div className="flex-1 rounded px-2 py-1" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', color: 'var(--color-text-secondary)', wordBreak: 'break-word' }}>
-                  <span style={{ color: 'rgba(239,68,68,0.6)', marginRight: '4px' }}>-</span>
-                  {bStr.length > 200 ? bStr.slice(0, 200) + '…' : bStr}
-                </div>
-              )}
-              {after !== undefined && after !== null && (
-                <div className="flex-1 rounded px-2 py-1" style={{ background: 'rgba(110,231,183,0.06)', border: '1px solid rgba(110,231,183,0.15)', color: 'var(--color-text-secondary)', wordBreak: 'break-word' }}>
-                  <span style={{ color: 'rgba(110,231,183,0.6)', marginRight: '4px' }}>+</span>
-                  {aStr.length > 200 ? aStr.slice(0, 200) + '…' : aStr}
-                </div>
-              )}
-            </div>
-          </div>
-        )
-      })}
-    </div>
+          return (
+            <tr
+              key={d.field}
+              style={{
+                borderBottom: '1px solid var(--color-border)',
+                background: isAdded
+                  ? 'rgba(110,231,183,0.04)'
+                  : isRemoved
+                    ? 'rgba(239,68,68,0.04)'
+                    : 'rgba(110,231,183,0.02)',
+              }}
+            >
+              <td style={{ padding: '5px 8px', color: 'var(--color-accent)', fontWeight: 600, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                {d.field}
+              </td>
+              <td style={{ padding: '5px 8px', color: 'var(--color-text-secondary)', wordBreak: 'break-word', verticalAlign: 'top' }}>
+                {!isAdded && (
+                  <span style={{ background: 'rgba(239,68,68,0.08)', borderRadius: '2px', padding: '1px 3px' }}>
+                    {bStr}
+                  </span>
+                )}
+                {isAdded && <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+              </td>
+              <td style={{ padding: '5px 8px', color: 'var(--color-text-secondary)', wordBreak: 'break-word', verticalAlign: 'top' }}>
+                {!isRemoved && (
+                  <span style={{ background: 'rgba(110,231,183,0.08)', borderRadius: '2px', padding: '1px 3px' }}>
+                    {aStr}
+                  </span>
+                )}
+                {isRemoved && <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+              </td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
   )
 }
 
 function LogEntry({ log, onRestore }: { log: ActivityLog; onRestore: (log: ActivityLog) => void }) {
   const [expanded, setExpanded] = useState(false)
+  const [diffs, setDiffs] = useState<FieldDiff[] | null>(null)
+  const [diffLoading, setDiffLoading] = useState(false)
+
   const color = ACTION_COLORS[log.action_type] ?? 'var(--color-text-muted)'
   const hasBefore = log.metadata.before_state && Object.keys(log.metadata.before_state).length > 0
   const hasAfter = log.metadata.after_state && Object.keys(log.metadata.after_state).length > 0
@@ -111,6 +129,19 @@ function LogEntry({ log, onRestore }: { log: ActivityLog; onRestore: (log: Activ
   const ts = new Date(log.created_at)
   const timeStr = ts.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   const dateStr = ts.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+
+  function handleToggle() {
+    if (!hasDiff) return
+    const next = !expanded
+    setExpanded(next)
+    if (next && diffs === null) {
+      setDiffLoading(true)
+      activityLogs.diff(log.id)
+        .then(res => setDiffs(res.diffs))
+        .catch(() => setDiffs([]))
+        .finally(() => setDiffLoading(false))
+    }
+  }
 
   return (
     <div
@@ -123,7 +154,7 @@ function LogEntry({ log, onRestore }: { log: ActivityLog; onRestore: (log: Activ
       {/* Summary row */}
       <div
         className="flex items-center gap-2 px-3 py-2 cursor-pointer group"
-        onClick={() => hasDiff && setExpanded(v => !v)}
+        onClick={handleToggle}
       >
         {/* Expand chevron */}
         <span
@@ -190,13 +221,21 @@ function LogEntry({ log, onRestore }: { log: ActivityLog; onRestore: (log: Activ
         )}
       </div>
 
-      {/* Expanded diff */}
+      {/* Expanded diff table */}
       {expanded && (
         <div className="px-3 pb-3" style={{ paddingLeft: '28px' }}>
-          <DiffView
-            before={log.metadata.before_state}
-            after={log.metadata.after_state}
-          />
+          {diffLoading ? (
+            <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', padding: '6px 0' }} className="animate-pulse">
+              Loading diff…
+            </div>
+          ) : (
+            <div
+              className="rounded overflow-hidden"
+              style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface-1)' }}
+            >
+              <DiffTable diffs={diffs ?? []} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -206,29 +245,61 @@ function LogEntry({ log, onRestore }: { log: ActivityLog; onRestore: (log: Activ
 export default function ActivityTab({ entityType, entityId, projectId, onRestored }: Props) {
   const [logs, setLogs] = useState<ActivityLog[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
   const [restoreTarget, setRestoreTarget] = useState<ActivityLog | null>(null)
   const [restoring, setRestoring] = useState(false)
+  const [conflicts, setConflicts] = useState<FieldDiff[] | null>(null)
 
   useEffect(() => {
     setLoading(true)
     setError(null)
+    setCursor(null)
+    setHasMore(false)
     activityLogs.list({
       entity_type: entityType,
       entity_id: entityId,
-      project_id: !entityId ? projectId : undefined,
+      project_id: projectId,
+      limit: 20,
     })
-      .then(data => setLogs(data.slice(0, 20)))
+      .then(data => {
+        setLogs(data.logs)
+        setCursor(data.next_cursor)
+        setHasMore(data.has_more)
+      })
       .catch(err => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false))
   }, [entityType, entityId, projectId])
 
-  async function handleRestore() {
+  async function loadMore() {
+    if (!cursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const data = await activityLogs.list({
+        entity_type: entityType,
+        entity_id: entityId,
+        project_id: projectId,
+        limit: 20,
+        cursor,
+      })
+      setLogs(prev => [...prev, ...data.logs])
+      setCursor(data.next_cursor)
+      setHasMore(data.has_more)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load more')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  async function handleRestore(force: boolean) {
     if (!restoreTarget) return
     setRestoring(true)
     try {
-      const result = await activityLogs.restore(restoreTarget.id)
-      // Optimistic: prepend a synthetic "restored" entry to avoid full refetch
+      const result = await activityLogs.restore(restoreTarget.id, force || undefined)
+      // Prepend a synthetic "restored" entry to avoid full refetch
       const syntheticLog: ActivityLog = {
         id: `restored-${Date.now()}`,
         project_id: restoreTarget.project_id,
@@ -243,14 +314,26 @@ export default function ActivityTab({ entityType, entityId, projectId, onRestore
         created_at: new Date().toISOString(),
         actor: 'user',
       }
-      setLogs(prev => [syntheticLog, ...prev].slice(0, 20))
+      setLogs(prev => [syntheticLog, ...prev])
       setRestoreTarget(null)
+      setConflicts(null)
       onRestored?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Restore failed')
+      if (err instanceof RestoreConflictError) {
+        setConflicts(err.conflict.conflicts)
+      } else {
+        setError(err instanceof Error ? err.message : 'Restore failed')
+        setRestoreTarget(null)
+        setConflicts(null)
+      }
     } finally {
       setRestoring(false)
     }
+  }
+
+  function handleCancelRestore() {
+    setRestoreTarget(null)
+    setConflicts(null)
   }
 
   if (loading) {
@@ -278,27 +361,48 @@ export default function ActivityTab({ entityType, entityId, projectId, onRestore
           No activity recorded for this entity.
         </div>
       ) : (
-        <div
-          className="rounded-lg overflow-hidden"
-          style={{ border: '1px solid var(--color-border)' }}
-        >
-          {logs.map((log, i) => (
-            <div
-              key={log.id}
-              style={{ borderBottom: i < logs.length - 1 ? '1px solid var(--color-border)' : undefined }}
-            >
-              <LogEntry log={log} onRestore={setRestoreTarget} />
+        <>
+          <div
+            className="rounded-lg overflow-hidden"
+            style={{ border: '1px solid var(--color-border)' }}
+          >
+            {logs.map((log, i) => (
+              <div
+                key={log.id}
+                style={{ borderBottom: i < logs.length - 1 ? '1px solid var(--color-border)' : undefined }}
+              >
+                <LogEntry log={log} onRestore={setRestoreTarget} />
+              </div>
+            ))}
+          </div>
+
+          {hasMore && (
+            <div className="mt-2 text-center">
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                style={{
+                  fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '4px 16px',
+                  borderRadius: '4px', border: '1px solid var(--color-border)',
+                  background: 'var(--color-surface-1)', color: 'var(--color-text-muted)',
+                  cursor: loadingMore ? 'default' : 'pointer',
+                  opacity: loadingMore ? 0.6 : 1,
+                }}
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {restoreTarget && (
         <RestoreConfirmModal
           log={restoreTarget}
           onConfirm={handleRestore}
-          onCancel={() => setRestoreTarget(null)}
+          onCancel={handleCancelRestore}
           restoring={restoring}
+          conflicts={conflicts}
         />
       )}
     </div>

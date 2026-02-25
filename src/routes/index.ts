@@ -8,6 +8,7 @@ import { registerChatRoutes } from "./chat";
 import { registerRestoreRoutes } from "./restore";
 import { registerPlanRoutes } from "./plan";
 import { registerActivityLogRoutes } from "./activity-logs";
+import { registerCompositionRoutes } from "./compositions";
 
 export function registerRoutes(app: FastifyInstance) {
   app.register(
@@ -25,6 +26,7 @@ export function registerRoutes(app: FastifyInstance) {
       registerRestoreRoutes(api);
       registerPlanRoutes(api);
       registerActivityLogRoutes(api);
+      registerCompositionRoutes(api);
     },
     { prefix: "/api" }
   );

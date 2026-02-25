@@ -11,6 +11,7 @@ import {
   updateHeartbeat,
   AgentStatus,
 } from "../firestore/agents";
+import { getProject } from "../firestore/projects";
 import { createMessage, MessageRole } from "../firestore/messages";
 import { updatePromptStatus } from "../firestore/prompts";
 import { endSession } from "../firestore/sessions";
@@ -90,6 +91,13 @@ export function registerWebSocket(app: FastifyInstance) {
           case "register": {
             if (!msg.agent_id || !msg.project_id || !msg.machine_name) {
               socket.send(JSON.stringify({ type: "error", error: "register requires agent_id, project_id, machine_name" }));
+              return;
+            }
+
+            // Validate project exists before allowing registration
+            const project = await getProject(msg.project_id);
+            if (!project) {
+              socket.send(JSON.stringify({ type: "error", error: `project ${msg.project_id} not found` }));
               return;
             }
 
@@ -194,8 +202,25 @@ export function registerWebSocket(app: FastifyInstance) {
     });
   });
 
-  // Telemetry broadcast channel for UI clients
-  app.get("/ws/telemetry", { websocket: true }, (socket) => {
-    addUIClient(socket);
+  // Telemetry broadcast channel for UI clients (tenant-scoped)
+  app.get("/ws/telemetry", { websocket: true }, async (socket, request) => {
+    const url = new URL(request.url!, `http://${request.headers.host}`);
+    const tenantId = url.searchParams.get("tenant_id");
+
+    if (!tenantId) {
+      socket.send(JSON.stringify({ type: "error", error: "tenant_id query parameter is required" }));
+      socket.close(1008, "tenant_id required");
+      return;
+    }
+
+    // Validate tenant exists
+    const tenantProject = await getProject(tenantId);
+    if (!tenantProject) {
+      socket.send(JSON.stringify({ type: "error", error: `project ${tenantId} not found` }));
+      socket.close(1008, "invalid tenant_id");
+      return;
+    }
+
+    addUIClient(socket, tenantId);
   });
 }

@@ -1,6 +1,19 @@
 import { WebSocket } from "ws";
 
-// --- Types ---
+// --- Exported TelemetryEvent schema (for external consumers) ---
+
+export interface TelemetryEvent {
+  type: "agent_status" | "execution_start" | "execution_end" | "token_usage";
+  tenant_id: string;
+  agent_id: string;
+  prompt_id?: string;
+  model?: string;
+  duration_ms?: number;
+  tokens?: number;
+  timestamp: number;
+}
+
+// --- Internal types ---
 
 export interface AgentTelemetry {
   agent_id: string;
@@ -29,40 +42,95 @@ export interface TelemetrySnapshot {
   timestamp: number;
 }
 
-type TelemetryEvent =
-  | { type: "agent_connected"; agent: AgentTelemetry }
-  | { type: "agent_disconnected"; agent_id: string }
-  | { type: "agent_status"; agent_id: string; status: string }
-  | { type: "execution_started"; execution: ExecutionTelemetry }
-  | { type: "execution_completed"; execution: ExecutionTelemetry }
+/** Internal broadcast event — carries tenant_id for scoped delivery. */
+type BroadcastEvent =
+  | { type: "agent_connected"; tenant_id: string; agent: AgentTelemetry }
+  | { type: "agent_disconnected"; tenant_id: string; agent_id: string }
+  | { type: "agent_status"; tenant_id: string; agent_id: string; status: string }
+  | { type: "execution_started"; tenant_id: string; execution: ExecutionTelemetry }
+  | { type: "execution_completed"; tenant_id: string; execution: ExecutionTelemetry }
   | { type: "snapshot"; data: TelemetrySnapshot };
 
 // --- In-memory state (never persisted) ---
 
 const agents = new Map<string, AgentTelemetry>();
 const activeExecutions = new Map<string, ExecutionTelemetry>();
-const uiClients = new Set<WebSocket>();
 let completedCount = 0;
+
+/** UI clients keyed by socket, value tracks which tenant they subscribed to (null = all). */
+const uiClients = new Map<WebSocket, { tenant_id: string | null }>();
+
+// --- Broadcast throttle (250ms batching per tenant) ---
+
+const BROADCAST_INTERVAL_MS = 250;
+
+/** Pending events keyed by tenant_id ("*" = tenant-less). */
+const pendingEvents = new Map<string, BroadcastEvent[]>();
+let flushTimer: ReturnType<typeof setInterval> | null = null;
+
+function ensureFlushTimer(): void {
+  if (flushTimer !== null) return;
+  flushTimer = setInterval(flushPendingEvents, BROADCAST_INTERVAL_MS);
+}
+
+function flushPendingEvents(): void {
+  if (pendingEvents.size === 0) {
+    // No events queued — stop the timer to avoid idle CPU
+    if (flushTimer !== null) {
+      clearInterval(flushTimer);
+      flushTimer = null;
+    }
+    return;
+  }
+
+  for (const [tenantKey, events] of pendingEvents) {
+    if (events.length === 0) continue;
+
+    // Build a single payload array for the batch
+    const batch = events.length === 1
+      ? JSON.stringify(events[0])
+      : JSON.stringify({ type: "batch", events });
+
+    for (const [client, meta] of uiClients) {
+      if (client.readyState !== WebSocket.OPEN) continue;
+      // Only deliver to clients subscribed to this specific tenant
+      if (meta.tenant_id !== null && meta.tenant_id === tenantKey) {
+        client.send(batch);
+      }
+    }
+  }
+
+  pendingEvents.clear();
+}
 
 // --- UI broadcast ---
 
-export function addUIClient(socket: WebSocket): void {
-  uiClients.add(socket);
-  // Send current snapshot on connect
-  send(socket, { type: "snapshot", data: getSnapshot() });
+export function addUIClient(socket: WebSocket, tenantId?: string): void {
+  uiClients.set(socket, { tenant_id: tenantId ?? null });
+
+  // Send filtered snapshot on connect (immediate, not batched)
+  const snap = tenantId ? getSnapshotForTenant(tenantId) : getSnapshot();
+  send(socket, { type: "snapshot", data: snap });
+
   socket.on("close", () => uiClients.delete(socket));
 }
 
-function broadcast(event: TelemetryEvent): void {
-  const payload = JSON.stringify(event);
-  for (const client of uiClients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(payload);
-    }
+/**
+ * Queue a broadcast event for delivery on the next 250ms tick.
+ * Snapshot events bypass the queue and are sent immediately.
+ */
+function broadcast(event: BroadcastEvent): void {
+  const tenantKey = "tenant_id" in event ? event.tenant_id : "*";
+
+  if (!pendingEvents.has(tenantKey)) {
+    pendingEvents.set(tenantKey, []);
   }
+  pendingEvents.get(tenantKey)!.push(event);
+
+  ensureFlushTimer();
 }
 
-function send(socket: WebSocket, event: TelemetryEvent): void {
+function send(socket: WebSocket, event: BroadcastEvent): void {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(event));
   }
@@ -78,10 +146,12 @@ export function trackAgentConnected(agentId: string, projectId: string): void {
     connected_at: Date.now(),
   };
   agents.set(agentId, agent);
-  broadcast({ type: "agent_connected", agent });
+  broadcast({ type: "agent_connected", tenant_id: projectId, agent });
 }
 
 export function trackAgentDisconnected(agentId: string): void {
+  const agent = agents.get(agentId);
+  const tenantId = agent?.project_id ?? "";
   agents.delete(agentId);
   // Clean up any orphaned executions for this agent
   for (const [id, exec] of activeExecutions) {
@@ -89,15 +159,16 @@ export function trackAgentDisconnected(agentId: string): void {
       activeExecutions.delete(id);
     }
   }
-  broadcast({ type: "agent_disconnected", agent_id: agentId });
+  broadcast({ type: "agent_disconnected", tenant_id: tenantId, agent_id: agentId });
 }
 
 export function trackAgentStatus(agentId: string, status: string): void {
   const agent = agents.get(agentId);
+  const tenantId = agent?.project_id ?? "";
   if (agent) {
     agent.status = status as AgentTelemetry["status"];
   }
-  broadcast({ type: "agent_status", agent_id: agentId, status });
+  broadcast({ type: "agent_status", tenant_id: tenantId, agent_id: agentId, status });
 }
 
 // --- Execution tracking ---
@@ -120,7 +191,10 @@ export function trackExecutionStarted(params: {
     started_at: Date.now(),
   };
   activeExecutions.set(execution_id, execution);
-  broadcast({ type: "execution_started", execution });
+
+  const agent = agents.get(params.agent_id);
+  const tenantId = agent?.project_id ?? "";
+  broadcast({ type: "execution_started", tenant_id: tenantId, execution });
   return execution_id;
 }
 
@@ -137,9 +211,12 @@ export function trackExecutionCompleted(
     execution.token_usage = tokenUsage;
   }
 
+  const agent = agents.get(execution.agent_id);
+  const tenantId = agent?.project_id ?? "";
+
   activeExecutions.delete(executionId);
   completedCount++;
-  broadcast({ type: "execution_completed", execution });
+  broadcast({ type: "execution_completed", tenant_id: tenantId, execution });
 }
 
 // Find active execution by session_id (for completion from agent messages)
@@ -156,6 +233,21 @@ export function getSnapshot(): TelemetrySnapshot {
   return {
     connected_agents: Array.from(agents.values()),
     active_executions: Array.from(activeExecutions.values()),
+    completed_count: completedCount,
+    timestamp: Date.now(),
+  };
+}
+
+/** Filtered snapshot for a specific tenant (project). */
+function getSnapshotForTenant(tenantId: string): TelemetrySnapshot {
+  return {
+    connected_agents: Array.from(agents.values()).filter(
+      (a) => a.project_id === tenantId,
+    ),
+    active_executions: Array.from(activeExecutions.values()).filter((e) => {
+      const agent = agents.get(e.agent_id);
+      return agent?.project_id === tenantId;
+    }),
     completed_count: completedCount,
     timestamp: Date.now(),
   };

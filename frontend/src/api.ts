@@ -111,6 +111,35 @@ export interface SnippetCollection {
   created_at: string;
 }
 
+// --- Tree Metrics ---
+
+export interface PromptMetrics {
+  prompt_id: string;
+  execution_count: number;
+  last_execution_at: string | null;
+  last_updated_at: string | null;
+  branch_activity_score: number;
+  heatmap_level: 'neutral' | 'light' | 'medium' | 'strong';
+  stale: boolean;
+}
+
+export interface DayActivity {
+  date: string;
+  count: number;
+}
+
+export interface BranchTimeline {
+  prompt_id: string;
+  timeline: DayActivity[];
+}
+
+export interface TreeMetricsResponse {
+  project_id: string;
+  prompts: PromptMetrics[];
+  branch_timelines: BranchTimeline[];
+  computed_at: string;
+}
+
 // --- Projects ---
 
 export const projects = {
@@ -122,6 +151,8 @@ export const projects = {
     request<Project>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/projects/${id}`, { method: 'DELETE' }),
+  treeMetrics: (id: string) =>
+    request<TreeMetricsResponse>(`/projects/${id}/tree-metrics`),
 };
 
 // --- Prompts ---
@@ -238,25 +269,117 @@ export interface ActivityLog {
   actor: Actor;
 }
 
+export interface PaginatedLogs {
+  logs: ActivityLog[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 export interface RestoreResult {
   restored: boolean;
   entity_type: EntityType;
   entity_id: string;
   restored_from_event: string;
   entity: Record<string, unknown>;
+  forced?: boolean;
+}
+
+export interface RestoreConflict {
+  error: 'conflict';
+  detail: string;
+  conflicts: FieldDiff[];
+  event_id: string;
+  entity_type: string;
+  entity_id: string;
+}
+
+export class RestoreConflictError extends Error {
+  conflict: RestoreConflict;
+  constructor(conflict: RestoreConflict) {
+    super(conflict.detail);
+    this.name = 'RestoreConflictError';
+    this.conflict = conflict;
+  }
+}
+
+export interface FieldDiff {
+  field: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface DiffResponse {
+  event_id: string;
+  entity_type: string;
+  entity_id: string;
+  action_type: string;
+  diffs: FieldDiff[];
+  computed_at: string;
 }
 
 export const activityLogs = {
-  list: (filters?: { entity_type?: EntityType; entity_id?: string; project_id?: string }) => {
+  list: (filters?: { entity_type?: EntityType; entity_id?: string; project_id?: string; since?: string; limit?: number; cursor?: string }) => {
     const params = new URLSearchParams();
     if (filters?.entity_type) params.set('entity_type', filters.entity_type);
     if (filters?.entity_id) params.set('entity_id', filters.entity_id);
     if (filters?.project_id) params.set('project_id', filters.project_id);
+    if (filters?.since) params.set('since', filters.since);
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    if (filters?.cursor) params.set('cursor', filters.cursor);
     const qs = params.toString();
-    return request<ActivityLog[]>(`/activity-logs${qs ? `?${qs}` : ''}`);
+    return request<PaginatedLogs>(`/activity-logs${qs ? `?${qs}` : ''}`);
   },
-  restore: (eventId: string) =>
-    request<RestoreResult>(`/restore/${eventId}`, { method: 'POST' }),
+  diff: (eventId: string) =>
+    request<DiffResponse>(`/logs/${eventId}/diff`),
+  restore: async (eventId: string, force?: boolean): Promise<RestoreResult> => {
+    const res = await fetch(`${BASE}/restore/${eventId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(force ? { force: true } : {}),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 409 && body.error === 'conflict') {
+      throw new RestoreConflictError(body as RestoreConflict);
+    }
+    if (!res.ok) {
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return body as RestoreResult;
+  },
+};
+
+// --- Compositions ---
+
+export interface CompositionPreview {
+  prompt_id: string;
+  base_body: string;
+  snippet_order: string[];
+  resolved_snippets: Array<{
+    id: string;
+    name: string;
+    content: string;
+  }>;
+  composed_body: string;
+}
+
+export interface CompositionResult {
+  prompt_id: string;
+  composed_body: string;
+  snippet_order: string[];
+  snippets_applied: number;
+}
+
+export const compositions = {
+  preview: (promptId: string, snippetOrder: string[]) =>
+    request<CompositionPreview>('/compositions/preview', {
+      method: 'POST',
+      body: JSON.stringify({ prompt_id: promptId, snippet_order: snippetOrder }),
+    }),
+  apply: (promptId: string, snippetOrder: string[]) =>
+    request<CompositionResult>('/compositions/apply', {
+      method: 'POST',
+      body: JSON.stringify({ prompt_id: promptId, snippet_order: snippetOrder }),
+    }),
 };
 
 // --- Planning Assist ---
