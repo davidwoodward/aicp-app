@@ -50,7 +50,7 @@ export default function ProjectDetail() {
         {tabs.map((tab) => (
           <NavLink
             key={tab.path}
-            to={tab.path}
+            to={`/projects/${projectId}/${tab.path}`}
             className={({ isActive }) =>
               `px-4 py-2 text-xs font-mono font-medium border-b-2 transition-colors ${
                 isActive
