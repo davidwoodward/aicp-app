@@ -43,9 +43,9 @@ The `/ws` WebSocket endpoint is the communication channel between `aicp-claude-a
 
 - **GCP Project**: `aicp-dev`
 - **Region**: `us-central1`
-- **Cloud Run Service**: `aicp-backend`
+- **Cloud Run Service**: `aicp`
 - **Service Account**: `aicp-backend-sa` (has `roles/datastore.user` + `roles/logging.logWriter`)
-- **Artifact Registry**: `us-central1-docker.pkg.dev/aicp-dev/aicp/aicp-backend:latest`
+- **Artifact Registry**: `us-central1-docker.pkg.dev/aicp-dev/aicp/aicp:latest`
 - **Firestore**: Native mode, default database
 
 Terraform owns Cloud Run config (scaling, env vars, IAM). Cloud Build owns the running image. The Cloud Run service has `lifecycle { ignore_changes = [image] }` set in Terraform.
@@ -82,4 +82,4 @@ The Dockerfile uses a multi-stage build:
 1. **Build stage**: installs all deps, compiles TS
 2. **Production stage**: copies `dist/` + production deps only
 
-Image target: `us-central1-docker.pkg.dev/aicp-dev/aicp/aicp-backend:latest`
+Image target: `us-central1-docker.pkg.dev/aicp-dev/aicp/aicp:latest`
