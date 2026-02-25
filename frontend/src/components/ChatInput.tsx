@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react'
 
 interface Props {
   onSend: (message: string) => void;
@@ -9,11 +9,27 @@ interface Props {
   onSlashTrigger?: (query: string) => void;
   onSlashDismiss?: () => void;
   slashActive?: boolean;
+  commandValidation?: { valid: boolean; error?: string; domain?: string; action?: string; args?: Record<string, string>; flags?: Record<string, string> };
 }
 
-export default function ChatInput({ onSend, disabled, provider, model, planningMode, onSlashTrigger, onSlashDismiss, slashActive }: Props) {
+export interface ChatInputHandle {
+  setValue: (value: string) => void;
+}
+
+const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
+  { onSend, disabled, provider, model, planningMode, onSlashTrigger, onSlashDismiss, slashActive, commandValidation },
+  ref,
+) {
   const [value, setValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    setValue: (v: string) => {
+      setValue(v)
+      if (v.startsWith('/')) onSlashTrigger?.(v)
+      setTimeout(() => textareaRef.current?.focus(), 0)
+    },
+  }), [onSlashTrigger])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -22,6 +38,8 @@ export default function ChatInput({ onSend, disabled, provider, model, planningM
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 200) + 'px'
   }, [value])
+
+  const isSlash = value.trim().startsWith('/')
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -56,16 +74,53 @@ export default function ChatInput({ onSend, disabled, provider, model, planningM
     }
   }
 
+  // Compute border color based on state
+  const borderColor = planningMode
+    ? 'rgba(110, 231, 183, 0.35)'
+    : isSlash && commandValidation?.valid
+      ? 'rgba(110, 231, 183, 0.4)'
+      : isSlash && commandValidation?.error
+        ? 'rgba(239, 68, 68, 0.35)'
+        : 'var(--color-border)'
+
   return (
     <div className="border-t border-border bg-surface-1 p-3">
       <div className="max-w-3xl mx-auto">
+        {/* Parsed command preview bar */}
+        {isSlash && commandValidation && (commandValidation.valid || commandValidation.error) && (
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 mb-1.5 rounded-md"
+            style={{
+              background: commandValidation.valid
+                ? 'rgba(110, 231, 183, 0.06)'
+                : 'rgba(239, 68, 68, 0.06)',
+              border: `1px solid ${commandValidation.valid
+                ? 'rgba(110, 231, 183, 0.2)'
+                : 'rgba(239, 68, 68, 0.2)'}`,
+            }}
+          >
+            <span style={{
+              fontSize: '10px',
+              color: commandValidation.valid ? 'var(--color-accent)' : 'var(--color-danger)',
+            }}>
+              {commandValidation.valid ? '\u2713' : '\u2717'}
+            </span>
+            <span style={{
+              fontSize: '10px',
+              fontFamily: 'var(--font-mono)',
+              color: commandValidation.valid ? 'var(--color-accent)' : 'var(--color-danger)',
+              opacity: 0.85,
+            }}>
+              {commandValidation.valid
+                ? formatPreview(commandValidation)
+                : commandValidation.error}
+            </span>
+          </div>
+        )}
+
         <div
           className="relative flex items-end gap-2 bg-surface-2 border rounded-lg px-3 py-2 transition-colors"
-          style={{
-            borderColor: planningMode
-              ? 'rgba(110, 231, 183, 0.35)'
-              : 'var(--color-border)',
-          }}
+          style={{ borderColor }}
         >
           {/* Planning mode badge inside input */}
           {planningMode && (
@@ -92,7 +147,7 @@ export default function ChatInput({ onSend, disabled, provider, model, planningM
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder={planningMode ? 'Describe an action to plan…' : 'Message AICP...'}
+            placeholder={planningMode ? 'Describe an action to plan\u2026' : 'Message AICP...'}
             disabled={disabled}
             rows={1}
             className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none resize-none max-h-[200px] leading-relaxed disabled:opacity-50"
@@ -112,6 +167,8 @@ export default function ChatInput({ onSend, disabled, provider, model, planningM
           <span className="text-[10px] font-mono text-text-muted">
             {planningMode ? (
               <>control-plane LLM &middot; actions require confirmation</>
+            ) : isSlash ? (
+              <>Tab to autocomplete &middot; Esc to dismiss</>
             ) : (
               <>{provider}/{model.split('/').pop()} &middot; Shift+Enter for newline</>
             )}
@@ -120,4 +177,19 @@ export default function ChatInput({ onSend, disabled, provider, model, planningM
       </div>
     </div>
   )
+})
+
+export default ChatInput
+
+function formatPreview(v: { domain?: string; action?: string; args?: Record<string, string>; flags?: Record<string, string> }): string {
+  const parts: string[] = []
+  if (v.domain) parts.push(`/${v.domain}`)
+  if (v.action && v.action !== v.domain) parts.push(v.action)
+  if (v.args) {
+    for (const [, val] of Object.entries(v.args)) parts.push(val)
+  }
+  if (v.flags) {
+    for (const [key, val] of Object.entries(v.flags)) parts.push(`--${key}=${val}`)
+  }
+  return parts.join(' ') || 'Ready to execute'
 }

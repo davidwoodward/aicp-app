@@ -106,66 +106,85 @@ export default function TelemetryPanel({ provider, model, onModelChange, selecte
     }).catch(() => {})
   }, [selectedProject])
 
-  // WebSocket telemetry connection
+  // WebSocket telemetry connection — reconnects when selectedProject changes
   useEffect(() => {
+    // tenant_id is required by the backend — don't connect without a project
+    if (!selectedProject) {
+      setConnected(false)
+      return
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = import.meta.env.DEV ? 'localhost:8080' : window.location.host
-    const ws = new WebSocket(`${protocol}//${host}/ws/telemetry`)
+    const ws = new WebSocket(`${protocol}//${host}/ws/telemetry?tenant_id=${encodeURIComponent(selectedProject)}`)
     wsRef.current = ws
+
+    // Reset state on reconnect (server sends fresh snapshot)
+    setTotalTokens(0)
 
     ws.onopen = () => setConnected(true)
     ws.onclose = () => setConnected(false)
 
+    function processEvent(event: { type: string; [key: string]: unknown }) {
+      switch (event.type) {
+        case 'snapshot':
+          setSnapshot(event.data as TelemetrySnapshot)
+          break
+        case 'agent_connected':
+          setSnapshot(s => ({
+            ...s,
+            connected_agents: [...s.connected_agents.filter(a => a.agent_id !== (event.agent as AgentTelemetry).agent_id), event.agent as AgentTelemetry],
+          }))
+          break
+        case 'agent_disconnected':
+          setSnapshot(s => ({ ...s, connected_agents: s.connected_agents.filter(a => a.agent_id !== event.agent_id) }))
+          break
+        case 'agent_status':
+          setSnapshot(s => ({
+            ...s,
+            connected_agents: s.connected_agents.map(a =>
+              a.agent_id === event.agent_id ? { ...a, status: event.status as AgentTelemetry['status'] } : a
+            ),
+          }))
+          break
+        case 'execution_started':
+          setSnapshot(s => ({
+            ...s,
+            active_executions: [...s.active_executions, event.execution as ExecutionTelemetry],
+          }))
+          break
+        case 'execution_completed': {
+          const exec = event.execution as ExecutionTelemetry
+          const usage = exec.token_usage
+          if (usage) {
+            setTotalTokens(t => t + (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0))
+          }
+          setSnapshot(s => ({
+            ...s,
+            active_executions: s.active_executions.filter(e => e.execution_id !== exec.execution_id),
+            completed_count: s.completed_count + 1,
+          }))
+          break
+        }
+        case 'batch': {
+          const events = (event as unknown as { events: Array<{ type: string; [key: string]: unknown }> }).events
+          if (Array.isArray(events)) {
+            for (const e of events) processEvent(e)
+          }
+          break
+        }
+      }
+    }
+
     ws.onmessage = (ev) => {
       try {
         const event = JSON.parse(ev.data as string) as { type: string; [key: string]: unknown }
-
-        switch (event.type) {
-          case 'snapshot':
-            setSnapshot(event.data as TelemetrySnapshot)
-            break
-          case 'agent_connected':
-            setSnapshot(s => ({
-              ...s,
-              connected_agents: [...s.connected_agents.filter(a => a.agent_id !== (event.agent as AgentTelemetry).agent_id), event.agent as AgentTelemetry],
-            }))
-            break
-          case 'agent_disconnected':
-            setSnapshot(s => ({ ...s, connected_agents: s.connected_agents.filter(a => a.agent_id !== event.agent_id) }))
-            break
-          case 'agent_status':
-            setSnapshot(s => ({
-              ...s,
-              connected_agents: s.connected_agents.map(a =>
-                a.agent_id === event.agent_id ? { ...a, status: event.status as AgentTelemetry['status'] } : a
-              ),
-            }))
-            break
-          case 'execution_started':
-            setSnapshot(s => ({
-              ...s,
-              active_executions: [...s.active_executions, event.execution as ExecutionTelemetry],
-            }))
-            break
-          case 'execution_completed': {
-            const exec = event.execution as ExecutionTelemetry
-            const usage = exec.token_usage
-            if (usage) {
-              setTotalTokens(t => t + (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0))
-            }
-            setSnapshot(s => ({
-              ...s,
-              active_executions: s.active_executions.filter(e => e.execution_id !== exec.execution_id),
-              completed_count: s.completed_count + 1,
-            }))
-            break
-          }
-        }
+        processEvent(event)
       } catch { /* skip malformed */ }
     }
 
     return () => { ws.close(); wsRef.current = null }
-  }, [])
+  }, [selectedProject])
 
   // Attempt model selection when model chip clicked
   function cycleModel() {

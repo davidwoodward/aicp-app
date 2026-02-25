@@ -3,9 +3,11 @@ import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { conversations as api, sendChatMessage, plan as planApi, type Snippet } from '../api'
 import ConversationSidebar from '../components/ConversationSidebar'
 import ChatBubble from '../components/ChatBubble'
-import ChatInput from '../components/ChatInput'
+import ChatInput, { type ChatInputHandle } from '../components/ChatInput'
 import SlashCommandMenu from '../components/SlashCommandMenu'
+import CommandSuggestions from '../components/CommandSuggestions'
 import PlanConfirmation from '../components/PlanConfirmation'
+import { useCommandSuggestions } from '../hooks/useCommandSuggestions'
 
 interface Props {
   provider: string;
@@ -34,6 +36,20 @@ const SUGGESTIONS = [
   'Create a snippet collection',
 ]
 
+// Commands that have interactive detail views in SlashCommandMenu
+const INTERACTIVE_PATTERNS = [
+  '/snippet list',
+  '/snippet show',
+  '/snippet select',
+  '/model list',
+  '/model use',
+]
+
+function isInteractiveCommand(query: string): boolean {
+  const q = query.toLowerCase().trim()
+  return INTERACTIVE_PATTERNS.some(p => q === p || q.startsWith(p + ' '))
+}
+
 export default function Chat({ provider, model, onModelChange }: Props) {
   const { conversationId } = useParams<{ conversationId: string }>()
   const navigate = useNavigate()
@@ -50,6 +66,16 @@ export default function Chat({ provider, model, onModelChange }: Props) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const chatInputRef = useRef<ChatInputHandle>(null)
+
+  // Command suggestions hook — runs when typing a slash command
+  const { suggestions, validation, loading } = useCommandSuggestions(
+    slashQuery && !isInteractiveCommand(slashQuery) ? slashQuery : '',
+  )
+
+  // Determine which UI to show
+  const showSlashMenu = slashQuery !== null && isInteractiveCommand(slashQuery)
+  const showSuggestions = slashQuery !== null && !showSlashMenu
 
   // Load conversation messages
   useEffect(() => {
@@ -258,6 +284,11 @@ export default function Chat({ provider, model, onModelChange }: Props) {
     setAttachedSnippets(prev => prev.filter(s => s.id !== id))
   }
 
+  // When a command suggestion is selected, update the input value
+  function handleSuggestionSelect(text: string) {
+    chatInputRef.current?.setValue(text)
+  }
+
   return (
     <>
       {!hideSidebar && (
@@ -325,9 +356,21 @@ export default function Chat({ provider, model, onModelChange }: Props) {
 
         {/* Input area */}
         <div className="relative">
-          {slashQuery !== null && (
+          {/* Command suggestions dropdown (grammar-aware autocomplete) */}
+          {showSuggestions && (
+            <CommandSuggestions
+              suggestions={suggestions}
+              validation={validation}
+              loading={loading}
+              onSelect={handleSuggestionSelect}
+              onDismiss={() => setSlashQuery(null)}
+            />
+          )}
+
+          {/* Interactive slash command views (snippet browser, model selector) */}
+          {showSlashMenu && (
             <SlashCommandMenu
-              query={slashQuery}
+              query={slashQuery!}
               currentProvider={provider}
               currentModel={model}
               onConfirmSnippets={handleConfirmSnippets}
@@ -377,14 +420,16 @@ export default function Chat({ provider, model, onModelChange }: Props) {
             </div>
           )}
           <ChatInput
+            ref={chatInputRef}
             onSend={handleSend}
-            disabled={streaming || pendingPlan?.status === 'applying'}
+            disabled={streaming || !!pendingPlan}
             provider={provider}
             model={model}
             planningMode={planningMode}
             onSlashTrigger={setSlashQuery}
             onSlashDismiss={() => setSlashQuery(null)}
             slashActive={slashQuery !== null}
+            commandValidation={showSuggestions ? validation : undefined}
           />
         </div>
       </div>
