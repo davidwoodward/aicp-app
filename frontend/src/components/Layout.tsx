@@ -1,4 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
+import ThemeToggle from './ThemeToggle'
 
 export default function Layout() {
   const location = useLocation()
@@ -16,6 +17,9 @@ export default function Layout() {
           <span className="text-text-muted text-xs font-mono uppercase tracking-widest">
             {isHome ? 'Projects' : 'Conductor'}
           </span>
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
