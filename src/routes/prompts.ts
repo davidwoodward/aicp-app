@@ -14,6 +14,8 @@ import { getAgent, sendToAgent } from "../websocket/agentRegistry";
 import { db } from "../firestore/client";
 import { logActivity } from "../middleware/activityLogger";
 import { trackExecutionStarted } from "../telemetry/telemetryService";
+import { loadLLMConfig, isValidProvider, ProviderName } from "../llm/config";
+import { createProvider } from "../llm/index";
 
 const VALID_STATUSES: PromptStatus[] = ["draft", "ready", "sent", "done"];
 
@@ -279,5 +281,51 @@ export function registerPromptRoutes(app: FastifyInstance) {
     });
 
     return reply.status(204).send();
+  });
+
+  app.post("/prompts/:id/refine", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const prompt = await getPrompt(id);
+    if (!prompt) {
+      return reply.status(404).send({ error: "prompt not found" });
+    }
+
+    const config = loadLLMConfig();
+    const body = req.body as Record<string, unknown> | null;
+    let providerName = config.defaultProvider as ProviderName;
+    if (body?.provider && typeof body.provider === "string" && isValidProvider(body.provider)) {
+      providerName = body.provider;
+    }
+
+    const providerConfig = config.providers[providerName];
+    if (!providerConfig.configured) {
+      return reply.status(400).send({ error: `Provider "${providerName}" is not configured` });
+    }
+
+    const model = typeof body?.model === "string" ? body.model : providerConfig.model;
+    const provider = createProvider(providerName, { ...providerConfig, model });
+
+    const messages = [
+      {
+        role: "system" as const,
+        content:
+          "You are a prompt refinement assistant. Given a prompt, produce a clearer, more precise, and more effective version. Return ONLY the refined prompt text. No explanations, no preamble, no markdown formatting.",
+      },
+      {
+        role: "user" as const,
+        content: prompt.body,
+      },
+    ];
+
+    let refined = "";
+    for await (const event of provider.stream(messages)) {
+      if (event.type === "delta") refined += event.content;
+      if (event.type === "error") {
+        return reply.status(502).send({ error: event.error });
+      }
+    }
+
+    return { original: prompt.body, refined: refined.trim(), prompt_id: id };
   });
 }

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { projects as projectsApi, prompts as promptsApi, conversations as convsApi } from '../api'
 import type { Project, Prompt, Conversation, PromptMetrics, DayActivity } from '../api'
 import { useTreeMetrics } from '../hooks/useTreeMetrics'
+import DeleteProjectModal from './DeleteProjectModal'
 
 interface Props {
   onProjectSelect: (projectId: string | null) => void
@@ -246,6 +247,7 @@ function ProjectEntry({
   onToggle,
   onSelect,
   onReorder,
+  onDelete,
 }: {
   project: Project
   isExpanded: boolean
@@ -254,7 +256,10 @@ function ProjectEntry({
   onToggle: (id: string) => void
   onSelect: (id: string) => void
   onReorder: (projectId: string, prompts: Prompt[]) => void
+  onDelete: (project: Project) => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const { metricsMap, timelineMap } = useTreeMetrics(isExpanded ? project.id : null)
 
   const projectPrompts = promptMap.get(project.id) ?? []
@@ -262,6 +267,24 @@ function ProjectEntry({
   const heat = maxHeatLevel(allMetrics)
   const sparkData = aggregateSparkline(timelineMap)
   const rootPrompts = projectPrompts.filter(p => !p.parent_prompt_id)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [menuOpen])
 
   return (
     <div>
@@ -273,6 +296,7 @@ function ProjectEntry({
           borderLeft: `3px solid ${HEAT_BORDER[heat] ?? 'transparent'}`,
           background: HEAT_BG[heat] ?? 'transparent',
           transition: 'border-color 0.2s, background 0.2s',
+          position: 'relative',
         }}
         onClick={() => { onToggle(project.id); onSelect(project.id) }}
       >
@@ -312,11 +336,79 @@ function ProjectEntry({
         {isExpanded && projectPrompts.length > 0 && (
           <Sparkline data={sparkData} />
         )}
+
+        {/* Three-dot menu button */}
+        <span
+          ref={menuRef as React.RefObject<HTMLSpanElement>}
+          style={{ position: 'relative', flexShrink: 0 }}
+        >
+          <button
+            onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }}
+            className="group-hover:opacity-100 transition-opacity"
+            style={{
+              opacity: menuOpen ? 1 : 0,
+              fontSize: '12px',
+              color: 'var(--color-text-muted)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '0 2px',
+              lineHeight: 1,
+              fontFamily: 'var(--font-mono)',
+            }}
+            title="Project actions"
+          >
+            &#x22EF;
+          </button>
+
+          {/* Dropdown menu */}
+          {menuOpen && (
+            <div
+              ref={menuRef}
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: '100%',
+                zIndex: 40,
+                minWidth: '140px',
+                background: 'var(--color-surface-2)',
+                border: '1px solid var(--color-border-bright)',
+                borderRadius: '6px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                padding: '4px 0',
+              }}
+            >
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  setMenuOpen(false)
+                  onDelete(project)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-danger)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.08)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+              >
+                Delete Project
+              </button>
+            </div>
+          )}
+        </span>
       </div>
 
       {/* Prompt children */}
       {isExpanded && (
-        <div className="tree-branch" style={{ marginLeft: '16px', paddingLeft: '12px' }}>
+        <div className="tree-children" style={{ marginLeft: '16px', paddingLeft: '12px' }}>
           {rootPrompts.length === 0 ? (
             <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', padding: '4px 0' }}>
               empty
@@ -344,7 +436,7 @@ function ProjectEntry({
   )
 }
 
-export default function PlanTree({ onProjectSelect }: Props) {
+export default function NavPanel({ onProjectSelect }: Props) {
   const navigate = useNavigate()
   const { conversationId } = useParams<{ conversationId: string }>()
 
@@ -353,6 +445,7 @@ export default function PlanTree({ onProjectSelect }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [convList, setConvList] = useState<Conversation[]>([])
   const [activeProject, setActiveProject] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
 
   useEffect(() => {
     projectsApi.list().then(setProjectList).catch(() => {})
@@ -396,12 +489,29 @@ export default function PlanTree({ onProjectSelect }: Props) {
     }
   }
 
+  function handleDeleteConfirm() {
+    if (!deleteTarget) return
+    const deletedId = deleteTarget.id
+    setDeleteTarget(null)
+
+    // Remove from list
+    setProjectList(prev => prev.filter(p => p.id !== deletedId))
+
+    // If deleted project was active, select next or null
+    if (activeProject === deletedId) {
+      const remaining = projectList.filter(p => p.id !== deletedId)
+      const next = remaining.length > 0 ? remaining[0].id : null
+      setActiveProject(next)
+      onProjectSelect(next)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-surface-0">
 
-      {/* ── PLAN section ─────────────────────────── */}
+      {/* ── PROJECTS section ─────────────────────── */}
       <SectionLabel>
-        <span>Plan</span>
+        <span>Projects</span>
         <button
           onClick={() => navigate('/projects')}
           className="text-text-muted hover:text-accent transition-colors"
@@ -428,13 +538,14 @@ export default function PlanTree({ onProjectSelect }: Props) {
               onToggle={toggleProject}
               onSelect={selectProject}
               onReorder={handleReorder}
+              onDelete={setDeleteTarget}
             />
           ))
         )}
 
-        {/* ── CONVERSATIONS section ─────────────────────────── */}
+        {/* ── SESSIONS section ─────────────────────────── */}
         <SectionLabel>
-          <span>Chats</span>
+          <span>Sessions</span>
           <button
             onClick={() => navigate('/')}
             className="text-text-muted hover:text-accent transition-colors"
@@ -476,6 +587,16 @@ export default function PlanTree({ onProjectSelect }: Props) {
           ))
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <DeleteProjectModal
+          projectId={deleteTarget.id}
+          projectName={deleteTarget.name}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   )
 }

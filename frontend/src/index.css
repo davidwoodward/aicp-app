@@ -122,8 +122,8 @@ body {
   100% { transform: translateY(200%); }
 }
 
-/* Plan tree branch lines */
-.tree-branch {
+/* Nav tree child lines */
+.tree-children {
   border-left: 1px solid var(--color-border);
   margin-left: 15px;
   padding-left: 13px;

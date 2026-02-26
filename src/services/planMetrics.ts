@@ -6,7 +6,7 @@ export interface PromptMetrics {
   execution_count: number;
   last_execution_at: string | null;
   last_updated_at: string | null;
-  branch_activity_score: number;
+  activity_score: number;
   heatmap_level: "neutral" | "light" | "medium" | "strong";
   stale: boolean;
 }
@@ -16,7 +16,7 @@ export interface DayActivity {
   count: number;
 }
 
-export interface BranchTimeline {
+export interface SubtreeTimeline {
   prompt_id: string;
   timeline: DayActivity[];
 }
@@ -24,7 +24,7 @@ export interface BranchTimeline {
 export interface TreeMetricsResponse {
   project_id: string;
   prompts: PromptMetrics[];
-  branch_timelines: BranchTimeline[];
+  subtree_timelines: SubtreeTimeline[];
   computed_at: string;
 }
 
@@ -82,7 +82,7 @@ function getDescendants(
   return all;
 }
 
-function buildBranchTimeline(
+function buildSubtreeTimeline(
   promptId: string,
   childrenMap: Map<string | null, string[]>,
   activityByPrompt: Map<string, ActivityLog[]>
@@ -181,13 +181,13 @@ export async function computeTreeMetrics(
     }
   }
 
-  // Recursive branch_activity_score computation (with cycle guard)
-  function branchScore(promptId: string, visited: Set<string> = new Set()): number {
+  // Recursive activity_score computation (with cycle guard)
+  function subtreeScore(promptId: string, visited: Set<string> = new Set()): number {
     if (visited.has(promptId)) return 0; // cycle detected
     visited.add(promptId);
     const own = executionCountMap.get(promptId) ?? 0;
     const children = childrenMap.get(promptId) ?? [];
-    return own + children.reduce((sum, childId) => sum + branchScore(childId, visited), 0);
+    return own + children.reduce((sum, childId) => sum + subtreeScore(childId, visited), 0);
   }
 
   // Build prompt metrics
@@ -195,27 +195,27 @@ export async function computeTreeMetrics(
     const executionCount = executionCountMap.get(prompt.id) ?? 0;
     const lastExecutionAt = lastExecutionMap.get(prompt.id) ?? null;
     const lastUpdatedAt = lastUpdatedMap.get(prompt.id) ?? null;
-    const score = branchScore(prompt.id);
+    const score = subtreeScore(prompt.id);
 
     return {
       prompt_id: prompt.id,
       execution_count: executionCount,
       last_execution_at: lastExecutionAt,
       last_updated_at: lastUpdatedAt,
-      branch_activity_score: score,
+      activity_score: score,
       heatmap_level: heatmapLevel(score),
       stale: isStale(lastUpdatedAt),
     };
   });
 
-  // Build branch timelines only for prompts that have children
-  const branchTimelines: BranchTimeline[] = [];
+  // Build subtree timelines only for prompts that have children
+  const subtreeTimelines: SubtreeTimeline[] = [];
   for (const prompt of prompts) {
     const children = childrenMap.get(prompt.id);
     if (children && children.length > 0) {
-      branchTimelines.push({
+      subtreeTimelines.push({
         prompt_id: prompt.id,
-        timeline: buildBranchTimeline(prompt.id, childrenMap, activityByPrompt),
+        timeline: buildSubtreeTimeline(prompt.id, childrenMap, activityByPrompt),
       });
     }
   }
@@ -223,7 +223,7 @@ export async function computeTreeMetrics(
   const result: TreeMetricsResponse = {
     project_id: projectId,
     prompts: promptMetrics,
-    branch_timelines: branchTimelines,
+    subtree_timelines: subtreeTimelines,
     computed_at: new Date().toISOString(),
   };
 

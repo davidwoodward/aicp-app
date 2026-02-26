@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Outlet, Link } from 'react-router-dom'
-import PlanTree from './PlanTree'
+import NavPanel from './NavPanel'
 import TelemetryPanel from './TelemetryPanel'
 import CmdKPalette from './CmdKPalette'
 import ThemeToggle from './ThemeToggle'
+import RecentlyDeletedPanel from './RecentlyDeletedPanel'
 
 interface Props {
   provider: string
@@ -13,8 +14,19 @@ interface Props {
 
 export default function AppShell({ provider, model, onModelChange }: Props) {
   const [cmdkOpen, setCmdkOpen] = useState(false)
-  const [selectedProject, setSelectedProject] = useState<string | null>(null)
-  const [planningMode, setPlanningMode] = useState(false)
+  const [deletedPanelOpen, setDeletedPanelOpen] = useState(false)
+  const [navKey, setNavKey] = useState(0)
+  const [selectedProject, setSelectedProject] = useState<string | null>(() => {
+    try { return localStorage.getItem('aicp:last-project') } catch { return null }
+  })
+
+  // Persist project selection
+  useEffect(() => {
+    try {
+      if (selectedProject) localStorage.setItem('aicp:last-project', selectedProject)
+      else localStorage.removeItem('aicp:last-project')
+    } catch {}
+  }, [selectedProject])
 
   useEffect(() => {
     function handle(e: KeyboardEvent) {
@@ -37,9 +49,10 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
         style={{ height: '36px' }}
       >
         <span
-          className="text-accent tracking-widest select-none"
+          className="flex items-center gap-1.5 text-accent tracking-widest select-none"
           style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 800, letterSpacing: '0.15em' }}
         >
+          <img src="/aicp-icon.svg" alt="" width="22" height="22" />
           AICP
         </span>
 
@@ -55,38 +68,6 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
 
         <div className="flex-1" />
 
-        {/* Planning Assist toggle */}
-        <button
-          onClick={() => setPlanningMode(v => !v)}
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded transition-all"
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
-            border: planningMode
-              ? '1px solid rgba(110, 231, 183, 0.5)'
-              : '1px solid var(--color-border)',
-            background: planningMode
-              ? 'rgba(110, 231, 183, 0.12)'
-              : 'var(--color-surface-2)',
-            color: planningMode
-              ? 'var(--color-accent)'
-              : 'var(--color-text-muted)',
-          }}
-          title={planningMode ? 'Planning Assist: ON — actions require confirmation' : 'Planning Assist: OFF'}
-        >
-          <span
-            style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: planningMode ? 'var(--color-accent)' : 'var(--color-border)',
-              transition: 'background 0.15s',
-              flexShrink: 0,
-            }}
-          />
-          Plan
-        </button>
-
         {/* Cmd+K trigger */}
         <button
           onClick={() => setCmdkOpen(true)}
@@ -99,20 +80,32 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
           </svg>
         </button>
 
+        {/* Settings gear — opens Recently Deleted */}
+        <button
+          onClick={() => setDeletedPanelOpen(true)}
+          className="flex items-center px-1 py-0.5 rounded hover:bg-surface-2 transition-colors"
+          title="Recently Deleted"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+
         <ThemeToggle />
       </header>
 
       {/* ── Three-panel body ─────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left — Plan tree */}
+        {/* Left — Navigation */}
         <div className="shrink-0 border-r border-border overflow-hidden" style={{ width: '240px' }}>
-          <PlanTree onProjectSelect={setSelectedProject} />
+          <NavPanel key={navKey} onProjectSelect={setSelectedProject} />
         </div>
 
         {/* Center — Chat / command interface */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          <Outlet context={{ hideSidebar: true, planningMode }} />
+          <Outlet context={{ selectedProject, setSelectedProject }} />
         </div>
 
         {/* Right — Telemetry + context bar */}
@@ -128,6 +121,14 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
 
       {/* Cmd+K palette overlay */}
       {cmdkOpen && <CmdKPalette onClose={() => setCmdkOpen(false)} />}
+
+      {/* Recently Deleted panel */}
+      {deletedPanelOpen && (
+        <RecentlyDeletedPanel
+          onClose={() => setDeletedPanelOpen(false)}
+          onRestore={() => setNavKey(k => k + 1)}
+        />
+      )}
     </div>
   )
 }

@@ -48,12 +48,12 @@ function Chip({ label, value, accent }: { label: string; value: string; accent?:
       className="flex items-center justify-between px-2 py-1 rounded"
       style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
     >
-      <span style={{ fontSize: '9px', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+      <span style={{ fontSize: '9px', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--color-text-muted)', flexShrink: 0 }}>
         {label}
       </span>
       <span
-        className="truncate ml-2"
-        style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: accent ? 'var(--color-accent)' : 'var(--color-text-secondary)', maxWidth: '120px', textAlign: 'right' }}
+        className="truncate"
+        style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: accent ? 'var(--color-accent)' : 'var(--color-text-secondary)', minWidth: 0, textAlign: 'right' }}
       >
         {value}
       </span>
@@ -108,7 +108,7 @@ export default function TelemetryPanel({ provider, model, onModelChange, selecte
 
   // WebSocket telemetry connection — reconnects when selectedProject changes
   useEffect(() => {
-    // tenant_id is required by the backend — don't connect without a project
+    // project_id is required by the telemetry endpoint
     if (!selectedProject) {
       setConnected(false)
       return
@@ -116,7 +116,7 @@ export default function TelemetryPanel({ provider, model, onModelChange, selecte
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = import.meta.env.DEV ? 'localhost:8080' : window.location.host
-    const ws = new WebSocket(`${protocol}//${host}/ws/telemetry?tenant_id=${encodeURIComponent(selectedProject)}`)
+    const ws = new WebSocket(`${protocol}//${host}/ws/telemetry?project_id=${encodeURIComponent(selectedProject)}`)
     wsRef.current = ws
 
     // Reset state on reconnect (server sends fresh snapshot)
@@ -208,7 +208,6 @@ export default function TelemetryPanel({ provider, model, onModelChange, selecte
 
       <div className="px-2 space-y-1.5 pb-2">
         <Chip label="Project" value={projectName ?? '—'} accent={!!projectName} />
-        <Chip label="Branch" value={snapshot.connected_agents.find(a => a.status === 'busy')?.project_id ? 'main' : '—'} />
         <div
           className="cursor-pointer hover:opacity-80 transition-opacity"
           onClick={cycleModel}

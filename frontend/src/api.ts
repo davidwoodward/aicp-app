@@ -20,6 +20,12 @@ export interface Project {
   name: string;
   description: string;
   created_at: string;
+  deleted_at: string | null;
+}
+
+export interface ProjectStats {
+  prompts: number;
+  sessions: number;
 }
 
 export type PromptStatus = 'draft' | 'ready' | 'sent' | 'done';
@@ -118,7 +124,7 @@ export interface PromptMetrics {
   execution_count: number;
   last_execution_at: string | null;
   last_updated_at: string | null;
-  branch_activity_score: number;
+  activity_score: number;
   heatmap_level: 'neutral' | 'light' | 'medium' | 'strong';
   stale: boolean;
 }
@@ -128,7 +134,7 @@ export interface DayActivity {
   count: number;
 }
 
-export interface BranchTimeline {
+export interface SubtreeTimeline {
   prompt_id: string;
   timeline: DayActivity[];
 }
@@ -136,7 +142,7 @@ export interface BranchTimeline {
 export interface TreeMetricsResponse {
   project_id: string;
   prompts: PromptMetrics[];
-  branch_timelines: BranchTimeline[];
+  subtree_timelines: SubtreeTimeline[];
   computed_at: string;
 }
 
@@ -153,6 +159,11 @@ export const projects = {
     request<void>(`/projects/${id}`, { method: 'DELETE' }),
   treeMetrics: (id: string) =>
     request<TreeMetricsResponse>(`/projects/${id}/tree-metrics`),
+  stats: (id: string) =>
+    request<ProjectStats>(`/projects/${id}/stats`),
+  listDeleted: () => request<Project[]>('/projects/deleted'),
+  restore: (id: string) =>
+    request<Project>(`/projects/${id}/restore`, { method: 'POST' }),
 };
 
 // --- Prompts ---
@@ -179,6 +190,11 @@ export const prompts = {
     request<{ prompt_id: string; session_id: string; agent_id: string; status: string }>(
       `/prompts/${id}/execute`,
       { method: 'POST', body: JSON.stringify({ agent_id: agentId }) },
+    ),
+  refine: (id: string, provider?: string, model?: string) =>
+    request<{ original: string; refined: string; prompt_id: string }>(
+      `/prompts/${id}/refine`,
+      { method: 'POST', body: JSON.stringify({ provider, model }) },
     ),
 };
 
@@ -380,25 +396,6 @@ export const compositions = {
       method: 'POST',
       body: JSON.stringify({ prompt_id: promptId, snippet_order: snippetOrder }),
     }),
-};
-
-// --- Planning Assist ---
-
-export interface PlanResult {
-  action: string;
-  payload: Record<string, unknown>;
-}
-
-export interface PlanApplyResult {
-  action: string;
-  result: unknown;
-}
-
-export const plan = {
-  interpret: (message: string) =>
-    request<PlanResult>('/plan', { method: 'POST', body: JSON.stringify({ message }) }),
-  apply: (action: string, payload: Record<string, unknown>) =>
-    request<PlanApplyResult>('/plan/apply', { method: 'POST', body: JSON.stringify({ action, payload }) }),
 };
 
 // --- Chat SSE ---

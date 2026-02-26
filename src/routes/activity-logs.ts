@@ -7,7 +7,7 @@ export function registerActivityLogRoutes(app: FastifyInstance) {
   app.get("/activity-logs", async (req, reply) => {
     const query = req.query as Record<string, string>;
 
-    // Require at least one scope constraint to prevent unscoped cross-tenant queries
+    // Require at least one scope constraint to prevent unscoped queries
     if (!query.project_id && !query.entity_id) {
       return reply.status(400).send({ error: "project_id or entity_id is required" });
     }

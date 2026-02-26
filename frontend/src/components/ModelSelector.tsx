@@ -1,77 +1,155 @@
 import { useState, useEffect, useRef } from 'react'
-import { models as modelsApi, type ModelsResponse } from '../api'
+import { models as modelsApi, type ModelInfo } from '../api'
 
 interface Props {
-  provider: string;
-  model: string;
-  onModelChange: (provider: string, model: string) => void;
+  currentProvider: string
+  currentModel: string
+  onSelect: (provider: string, model: string) => void
+  onDismiss: () => void
 }
 
-export default function ModelSelector({ provider, model, onModelChange }: Props) {
-  const [open, setOpen] = useState(false)
-  const [data, setData] = useState<ModelsResponse | null>(null)
-  const ref = useRef<HTMLDivElement>(null)
+export default function ModelSelector({ currentProvider, currentModel, onSelect, onDismiss }: Props) {
+  const [items, setItems] = useState<ModelInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeIdx, setActiveIdx] = useState(0)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (open && !data) {
-      modelsApi.list().then(setData).catch(() => {})
-    }
-  }, [open, data])
+    modelsApi.list()
+      .then(data => {
+        const configured = data.providers.filter(p => p.configured)
+        setItems(configured)
+        const idx = configured.findIndex(
+          p => p.name === currentProvider && p.model === currentModel,
+        )
+        if (idx >= 0) setActiveIdx(idx)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [currentProvider, currentModel])
 
-  // Click outside
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { e.preventDefault(); onDismiss(); return }
+      if (items.length === 0) return
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveIdx(i => Math.min(i + 1, items.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveIdx(i => Math.max(i - 1, 0))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        const item = items[activeIdx]
+        if (item) onSelect(item.name, item.model)
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [items, activeIdx, onSelect, onDismiss])
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onDismiss()
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
+  }, [onDismiss])
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-mono text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
+    <div
+      ref={menuRef}
+      className="absolute bottom-full left-0 right-0 mb-1 max-w-3xl mx-auto overflow-hidden z-50"
+      style={{
+        background: 'var(--color-surface-1)',
+        border: '1px solid var(--color-border)',
+        borderRadius: '8px',
+        boxShadow: '0 -8px 32px rgba(0,0,0,0.4)',
+      }}
+    >
+      <div
+        className="px-3 py-1.5"
+        style={{
+          borderBottom: '1px solid var(--color-border)',
+          fontSize: '9px',
+          fontFamily: 'var(--font-display)',
+          fontWeight: 700,
+          letterSpacing: '0.15em',
+          textTransform: 'uppercase',
+          color: 'var(--color-text-muted)',
+        }}
       >
-        <span className="capitalize">{provider}</span>
-        <span className="text-text-muted">/</span>
-        <span>{model.split('/').pop()}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
+        Select Model
+      </div>
 
-      {open && data && (
-        <div className="absolute right-0 top-full mt-1 w-64 bg-surface-1 border border-border rounded-lg shadow-lg z-50 py-1">
-          {data.providers.map((p) => (
-            <button
-              key={p.name}
-              onClick={() => {
-                if (p.configured) {
-                  onModelChange(p.name, p.model)
-                  setOpen(false)
-                }
-              }}
-              disabled={!p.configured}
-              className={`w-full text-left px-3 py-2 text-xs transition-colors ${
-                p.name === provider
-                  ? 'bg-accent/10 text-accent'
-                  : p.configured
-                    ? 'text-text-primary hover:bg-surface-2'
-                    : 'text-text-muted opacity-50 cursor-not-allowed'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium capitalize">{p.name}</span>
-                {!p.configured && <span className="text-[10px]">(not configured)</span>}
-              </div>
-              <div className="font-mono text-text-muted text-[10px] mt-0.5">{p.model}</div>
-            </button>
-          ))}
+      {loading ? (
+        <div className="px-3 py-4 text-center" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+          Loading...
+        </div>
+      ) : items.length === 0 ? (
+        <div className="px-3 py-4 text-center" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+          No configured models.
+        </div>
+      ) : (
+        <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+          {items.map((item, i) => {
+            const active = i === activeIdx
+            const isCurrent = item.name === currentProvider && item.model === currentModel
+            return (
+              <button
+                key={`${item.name}:${item.model}`}
+                onClick={() => onSelect(item.name, item.model)}
+                onMouseEnter={() => setActiveIdx(i)}
+                className="w-full text-left flex items-center gap-3 px-3 py-2 transition-colors"
+                style={{
+                  background: active ? 'rgba(110, 231, 183, 0.06)' : 'transparent',
+                  borderLeft: active ? '2px solid var(--color-accent)' : '2px solid transparent',
+                }}
+              >
+                <span
+                  style={{
+                    width: '12px',
+                    fontSize: '12px',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 700,
+                    color: 'var(--color-accent)',
+                    textAlign: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {isCurrent ? '*' : ''}
+                </span>
+                <span
+                  style={{
+                    fontSize: '12px',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 500,
+                    color: active ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                  }}
+                >
+                  {item.name}
+                </span>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                >
+                  {item.model}
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
+
+      <div className="flex items-center px-3 py-1" style={{ borderTop: '1px solid var(--color-border)' }}>
+        <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', opacity: 0.5 }}>
+          &uarr;&darr; navigate &middot; Enter select &middot; Esc dismiss
+        </span>
+      </div>
     </div>
   )
 }
