@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
 import { conversations as api, sendChatMessage, plan as planApi, type Snippet } from '../api'
 import ConversationSidebar from '../components/ConversationSidebar'
@@ -65,6 +65,8 @@ export default function Chat({ provider, model, onModelChange }: Props) {
   const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const chatInputRef = useRef<ChatInputHandle>(null)
 
@@ -98,9 +100,17 @@ export default function Chat({ provider, model, onModelChange }: Props) {
     }).catch(() => {})
   }, [conversationId])
 
-  // Auto-scroll
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  // Pin messages to bottom: pad the top so content sits at the bottom of the viewport
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current
+    const content = contentRef.current
+    if (!scroll || !content) return
+
+    // Reset padding to measure true content height
+    content.style.paddingTop = '0px'
+    const gap = scroll.clientHeight - content.offsetHeight
+    content.style.paddingTop = `${Math.max(0, gap)}px`
+    scroll.scrollTop = scroll.scrollHeight
   }, [messages, streaming, pendingPlan])
 
   // ── Normal chat send ────────────────────────────────────────────────────
@@ -302,55 +312,55 @@ export default function Chat({ provider, model, onModelChange }: Props) {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto scroll-smooth">
-          <div className="max-w-3xl mx-auto px-4 py-6">
-            {messages.length === 0 && !pendingPlan ? (
-              /* Empty state */
-              <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                <div className="font-mono text-accent text-2xl font-bold mb-2">AICP</div>
-                <p className="text-text-muted text-sm mb-6">
-                  {planningMode
-                    ? 'Describe an action — it will be confirmed before executing.'
-                    : 'How can I help you today?'}
-                </p>
-                <div className="grid grid-cols-2 gap-2 max-w-md">
-                  {SUGGESTIONS.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => handleSend(s)}
-                      className="px-4 py-3 text-xs text-left bg-surface-1 border border-border rounded-lg hover:border-accent/30 hover:bg-surface-2 transition-all text-text-secondary"
-                    >
-                      {s}
-                    </button>
-                  ))}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div ref={contentRef} className="max-w-3xl mx-auto px-4 py-6">
+              {messages.length === 0 && !pendingPlan ? (
+                /* Empty state */
+                <div className="flex flex-col items-center justify-center pb-8">
+                  <div className="font-mono text-accent text-2xl font-bold mb-2">AICP</div>
+                  <p className="text-text-muted text-sm mb-6">
+                    {planningMode
+                      ? 'Describe an action — it will be confirmed before executing.'
+                      : 'How can I help you today?'}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 max-w-md">
+                    {SUGGESTIONS.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => handleSend(s)}
+                        className="px-4 py-3 text-xs text-left bg-surface-1 border border-border rounded-lg hover:border-accent/30 hover:bg-surface-2 transition-all text-text-secondary"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <>
-                {messages.map((msg) => (
-                  <ChatBubble
-                    key={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    toolCalls={msg.toolCalls}
-                    toolResults={msg.toolResults}
-                    streaming={streaming && msg.id.startsWith('assistant-') && msg === messages[messages.length - 1]}
-                  />
-                ))}
+              ) : (
+                <>
+                  {messages.map((msg) => (
+                    <ChatBubble
+                      key={msg.id}
+                      role={msg.role}
+                      content={msg.content}
+                      toolCalls={msg.toolCalls}
+                      toolResults={msg.toolResults}
+                      streaming={streaming && msg.id.startsWith('assistant-') && msg === messages[messages.length - 1]}
+                    />
+                  ))}
 
-                {/* Pending plan confirmation card */}
-                {pendingPlan && (
-                  <PlanConfirmation
-                    action={pendingPlan.action}
-                    payload={pendingPlan.payload}
-                    status={pendingPlan.status}
-                    onApply={handleApplyPlan}
-                    onDismiss={handleDismissPlan}
-                  />
-                )}
-              </>
-            )}
-            <div ref={messagesEndRef} />
+                  {/* Pending plan confirmation card */}
+                  {pendingPlan && (
+                    <PlanConfirmation
+                      action={pendingPlan.action}
+                      payload={pendingPlan.payload}
+                      status={pendingPlan.status}
+                      onApply={handleApplyPlan}
+                      onDismiss={handleDismissPlan}
+                    />
+                  )}
+                </>
+              )}
+              <div ref={messagesEndRef} />
           </div>
         </div>
 

@@ -111,7 +111,7 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
         </div>
 
         {/* Center — Chat / command interface */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden flex flex-col">
           <Outlet context={{ hideSidebar: true, planningMode }} />
         </div>
 
