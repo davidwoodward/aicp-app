@@ -4,14 +4,14 @@ import { getSetting, upsertSetting } from "../firestore/settings";
 import {
   getProviderStatuses,
   getRegistrySnapshot,
-  setTenantOverride,
+  setModelOverride,
   RegistryError,
 } from "../llm/modelRegistry";
 
 interface SelectBody {
   provider: string;
   model: string;
-  tenant_id?: string;
+  project_id?: string;
 }
 
 export function registerModelRoutes(app: FastifyInstance) {
@@ -37,24 +37,24 @@ export function registerModelRoutes(app: FastifyInstance) {
     return getProviderStatuses();
   });
 
-  // ── GET /models/registry — full snapshot with tenant overrides ────────
-  app.get<{ Querystring: { tenant_id?: string } }>(
+  // ── GET /models/registry — full snapshot with project overrides ────────
+  app.get<{ Querystring: { project_id?: string } }>(
     "/models/registry",
     async (req) => {
-      const tenantId = req.query.tenant_id;
-      return getRegistrySnapshot(tenantId);
+      const projectId = req.query.project_id;
+      return getRegistrySnapshot(projectId);
     },
   );
 
-  // ── POST /models/select — save tenant model override ──────────────────
+  // ── POST /models/select — save project model override ──────────────────
   app.post<{ Body: SelectBody }>("/models/select", async (req, reply) => {
-    const { provider, model, tenant_id } = req.body;
+    const { provider, model, project_id } = req.body;
     if (!provider || !model) {
       return reply.status(400).send({ error: "provider and model are required" });
     }
 
     try {
-      const override = await setTenantOverride(provider, model, tenant_id);
+      const override = await setModelOverride(provider, model, project_id);
       return { provider: override.provider, model: override.model };
     } catch (err) {
       if (err instanceof RegistryError) {

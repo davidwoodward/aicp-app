@@ -1,6 +1,6 @@
-// Per-tenant model registry.
-// Tracks provider configuration, available models, and tenant overrides.
-// Backed by environment variables (global config) + Firestore (per-tenant overrides).
+// Model registry.
+// Tracks provider configuration, available models, and project-level overrides.
+// Backed by environment variables (global config) + Firestore (per-project overrides).
 
 import {
   loadLLMConfig,
@@ -31,7 +31,7 @@ export interface RegistrySnapshot {
   providers: ProviderStatus[];
 }
 
-export interface TenantOverride {
+export interface ModelOverride {
   provider: ProviderName;
   model: string;
   updated_at: number;
@@ -61,21 +61,21 @@ const KNOWN_MODELS: Record<ProviderName, string[]> = {
 
 // ── Settings key helpers ────────────────────────────────────────────────────
 
-function tenantSettingsKey(tenantId?: string): string {
-  return tenantId ? `execution_llm:${tenantId}` : "execution_llm";
+function settingsKey(projectId?: string): string {
+  return projectId ? `execution_llm:${projectId}` : "execution_llm";
 }
 
 // ── Registry functions ──────────────────────────────────────────────────────
 
 /**
  * Build a full snapshot of provider status and available models.
- * Includes tenant-specific overrides if a tenantId is provided.
+ * Includes project-specific overrides if a projectId is provided.
  */
 export async function getRegistrySnapshot(
-  tenantId?: string,
+  projectId?: string,
 ): Promise<RegistrySnapshot> {
   const config = loadLLMConfig();
-  const setting = await getSetting(tenantSettingsKey(tenantId)).catch(
+  const setting = await getSetting(settingsKey(projectId)).catch(
     () => null,
   );
 
@@ -113,7 +113,7 @@ export async function getRegistrySnapshot(
 }
 
 /**
- * Get the status summary for all providers (lightweight, no tenant overrides).
+ * Get the status summary for all providers (lightweight, no project overrides).
  */
 export function getProviderStatuses(): ProviderStatus[] {
   const config = loadLLMConfig();
@@ -138,14 +138,14 @@ export function getProviderStatuses(): ProviderStatus[] {
 }
 
 /**
- * Save a tenant-specific provider/model override.
+ * Save a project-specific provider/model override.
  * Throws if the provider is unknown or not configured.
  */
-export async function setTenantOverride(
+export async function setModelOverride(
   provider: string,
   model: string,
-  tenantId?: string,
-): Promise<TenantOverride> {
+  projectId?: string,
+): Promise<ModelOverride> {
   if (!isValidProvider(provider)) {
     throw new RegistryError(`Unknown provider: ${provider}`);
   }
@@ -157,25 +157,25 @@ export async function setTenantOverride(
     );
   }
 
-  const override: TenantOverride = {
+  const override: ModelOverride = {
     provider,
     model,
     updated_at: Date.now(),
   };
 
-  await upsertSetting(tenantSettingsKey(tenantId), override as unknown as Record<string, unknown>);
+  await upsertSetting(settingsKey(projectId), override as unknown as Record<string, unknown>);
   return override;
 }
 
 /**
  * Resolve the effective provider name and config for execution.
- * Checks tenant override first, falls back to global default.
+ * Checks project override first, falls back to global default.
  * Throws if the resolved provider is not configured.
  */
 export async function resolveProvider(
   requestProvider?: string,
   requestModel?: string,
-  tenantId?: string,
+  projectId?: string,
 ): Promise<{ providerName: ProviderName; model: string; config: ProviderConfig }> {
   const llmConfig = loadLLMConfig();
 
@@ -194,8 +194,8 @@ export async function resolveProvider(
     };
   }
 
-  // 2. Tenant override from Firestore
-  const setting = await getSetting(tenantSettingsKey(tenantId)).catch(
+  // 2. Project override from Firestore
+  const setting = await getSetting(settingsKey(projectId)).catch(
     () => null,
   );
   if (
@@ -213,7 +213,7 @@ export async function resolveProvider(
         config: { ...pc, model },
       };
     }
-    // Tenant override points to an unconfigured provider — fall through
+    // Project override points to an unconfigured provider — fall through
   }
 
   // 3. Global default

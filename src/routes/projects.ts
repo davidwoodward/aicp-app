@@ -3,9 +3,13 @@ import {
   createProject,
   getProject,
   listProjects,
+  listDeletedProjects,
   updateProject,
-  deleteProject,
+  softDeleteProject,
+  restoreProject,
 } from "../firestore/projects";
+import { listPromptsByProject } from "../firestore/prompts";
+import { listSessionsByProject } from "../firestore/sessions";
 import { logActivity } from "../middleware/activityLogger";
 import { computeTreeMetrics } from "../services/planMetrics";
 
@@ -38,6 +42,10 @@ export function registerProjectRoutes(app: FastifyInstance) {
     return listProjects();
   });
 
+  app.get("/projects/deleted", async () => {
+    return listDeletedProjects();
+  });
+
   app.get("/projects/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const project = await getProject(id);
@@ -45,6 +53,21 @@ export function registerProjectRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "project not found" });
     }
     return project;
+  });
+
+  app.get("/projects/:id/stats", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const project = await getProject(id);
+    if (!project) {
+      return reply.status(404).send({ error: "project not found" });
+    }
+
+    const [prompts, sessions] = await Promise.all([
+      listPromptsByProject(id),
+      listSessionsByProject(id),
+    ]);
+
+    return { prompts: prompts.length, sessions: sessions.length };
   });
 
   app.patch("/projects/:id", async (req, reply) => {
@@ -106,7 +129,7 @@ export function registerProjectRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "project not found" });
     }
 
-    await deleteProject(id);
+    await softDeleteProject(id);
 
     await logActivity({
       project_id: id,
@@ -118,5 +141,30 @@ export function registerProjectRoutes(app: FastifyInstance) {
     });
 
     return reply.status(204).send();
+  });
+
+  app.post("/projects/:id/restore", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const existing = await getProject(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "project not found" });
+    }
+    if (!existing.deleted_at) {
+      return reply.status(400).send({ error: "project is not deleted" });
+    }
+
+    await restoreProject(id);
+
+    await logActivity({
+      project_id: id,
+      entity_type: "project",
+      entity_id: id,
+      action_type: "restored",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: { ...existing, deleted_at: null } as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
+    return { ...existing, deleted_at: null };
   });
 }

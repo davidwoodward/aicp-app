@@ -1,41 +1,51 @@
 import { useState, useEffect, useRef } from 'react'
-import type { SuggestionItem } from '../hooks/useCommandSuggestions'
+
+export type RefineMode = 'manual' | 'auto'
 
 interface Props {
-  suggestions: SuggestionItem[]
-  onSelect: (text: string) => void
+  onSelect: (mode: RefineMode) => void
   onDismiss: () => void
 }
 
-export default function CommandSuggestions({ suggestions, onSelect, onDismiss }: Props) {
-  const [activeIdx, setActiveIdx] = useState(0)
+const STORAGE_KEY = 'aicp:refine-mode'
+
+const OPTIONS: { mode: RefineMode; label: string; description: string }[] = [
+  { mode: 'manual', label: 'Manual', description: 'Edit the prompt yourself' },
+  { mode: 'auto', label: 'Auto', description: 'LLM generates a refined version' },
+]
+
+function getSavedMode(): number {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved === 'auto') return 1
+  } catch {}
+  return 0
+}
+
+export default function RefineSelector({ onSelect, onDismiss }: Props) {
+  const [activeIdx, setActiveIdx] = useState(getSavedMode)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { setActiveIdx(0) }, [suggestions.length])
-
-  // Keyboard navigation
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { onDismiss(); return }
-      if (suggestions.length === 0) return
-
+      if (e.key === 'Escape') { e.preventDefault(); onDismiss(); return }
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setActiveIdx(i => Math.min(i + 1, suggestions.length - 1))
+        setActiveIdx(i => Math.min(i + 1, OPTIONS.length - 1))
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setActiveIdx(i => Math.max(i - 1, 0))
-      } else if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'Enter') {
+      } else if (e.key === 'Enter') {
         e.preventDefault()
-        const item = suggestions[activeIdx]
-        if (item) onSelect(item.text)
+        const opt = OPTIONS[activeIdx]
+        localStorage.setItem(STORAGE_KEY, opt.mode)
+        onSelect(opt.mode)
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [suggestions, activeIdx, onSelect, onDismiss])
+  }, [activeIdx, onSelect, onDismiss])
 
-  // Click outside
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onDismiss()
@@ -43,8 +53,6 @@ export default function CommandSuggestions({ suggestions, onSelect, onDismiss }:
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [onDismiss])
-
-  if (suggestions.length === 0) return null
 
   return (
     <div
@@ -57,15 +65,33 @@ export default function CommandSuggestions({ suggestions, onSelect, onDismiss }:
         boxShadow: '0 -8px 32px rgba(0,0,0,0.4)',
       }}
     >
-      <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
-        {suggestions.map((item, i) => {
+      <div
+        className="px-3 py-1.5"
+        style={{
+          borderBottom: '1px solid var(--color-border)',
+          fontSize: '9px',
+          fontFamily: 'var(--font-display)',
+          fontWeight: 700,
+          letterSpacing: '0.15em',
+          textTransform: 'uppercase',
+          color: 'var(--color-text-muted)',
+        }}
+      >
+        Refine Mode
+      </div>
+
+      <div>
+        {OPTIONS.map((opt, i) => {
           const active = i === activeIdx
           return (
             <button
-              key={item.text}
-              onClick={() => onSelect(item.text)}
+              key={opt.mode}
+              onClick={() => {
+                localStorage.setItem(STORAGE_KEY, opt.mode)
+                onSelect(opt.mode)
+              }}
               onMouseEnter={() => setActiveIdx(i)}
-              className="w-full text-left flex items-center gap-3 px-3 py-2 transition-colors"
+              className="w-full text-left flex items-center gap-3 px-3 py-2.5 transition-colors"
               style={{
                 background: active ? 'rgba(110, 231, 183, 0.06)' : 'transparent',
                 borderLeft: active ? '2px solid var(--color-accent)' : '2px solid transparent',
@@ -79,7 +105,7 @@ export default function CommandSuggestions({ suggestions, onSelect, onDismiss }:
                   color: active ? 'var(--color-accent)' : 'var(--color-text-primary)',
                 }}
               >
-                {item.label}
+                {opt.label}
               </span>
               <span
                 style={{
@@ -88,7 +114,7 @@ export default function CommandSuggestions({ suggestions, onSelect, onDismiss }:
                   color: 'var(--color-text-muted)',
                 }}
               >
-                {item.description}
+                {opt.description}
               </span>
             </button>
           )
@@ -97,7 +123,7 @@ export default function CommandSuggestions({ suggestions, onSelect, onDismiss }:
 
       <div className="flex items-center px-3 py-1" style={{ borderTop: '1px solid var(--color-border)' }}>
         <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', opacity: 0.5 }}>
-          Tab to complete &middot; &uarr;&darr; navigate &middot; Esc dismiss
+          &uarr;&darr; navigate &middot; Enter select &middot; Esc dismiss
         </span>
       </div>
     </div>

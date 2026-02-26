@@ -23,7 +23,7 @@ export function useTreeMetrics(projectId: string | null): UseTreeMetricsResult {
         setMetricsMap(mMap)
 
         const tMap = new Map<string, DayActivity[]>()
-        for (const bt of res.branch_timelines) tMap.set(bt.prompt_id, bt.timeline)
+        for (const st of res.subtree_timelines) tMap.set(st.prompt_id, st.timeline)
         setTimelineMap(tMap)
       })
       .catch(() => {})

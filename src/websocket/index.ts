@@ -202,25 +202,25 @@ export function registerWebSocket(app: FastifyInstance) {
     });
   });
 
-  // Telemetry broadcast channel for UI clients (tenant-scoped)
+  // Telemetry broadcast channel for UI clients (project-scoped)
   app.get("/ws/telemetry", { websocket: true }, async (socket, request) => {
     const url = new URL(request.url!, `http://${request.headers.host}`);
-    const tenantId = url.searchParams.get("tenant_id");
+    const projectId = url.searchParams.get("project_id");
 
-    if (!tenantId) {
-      socket.send(JSON.stringify({ type: "error", error: "tenant_id query parameter is required" }));
-      socket.close(1008, "tenant_id required");
+    if (!projectId) {
+      socket.send(JSON.stringify({ type: "error", error: "project_id query parameter is required" }));
+      socket.close(1008, "project_id required");
       return;
     }
 
-    // Validate tenant exists
-    const tenantProject = await getProject(tenantId);
-    if (!tenantProject) {
-      socket.send(JSON.stringify({ type: "error", error: `project ${tenantId} not found` }));
-      socket.close(1008, "invalid tenant_id");
+    // Validate project exists
+    const project = await getProject(projectId);
+    if (!project) {
+      socket.send(JSON.stringify({ type: "error", error: `project ${projectId} not found` }));
+      socket.close(1008, "invalid project_id");
       return;
     }
 
-    addUIClient(socket, tenantId);
+    addUIClient(socket, projectId);
   });
 }

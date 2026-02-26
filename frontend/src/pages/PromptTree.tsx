@@ -67,7 +67,7 @@ function TreeNode({
   allPrompts,
   depth,
   onEdit,
-  onBranch,
+  onAddChild,
   onDrop,
   metricsMap,
   timelineMap,
@@ -78,7 +78,7 @@ function TreeNode({
   allPrompts: Prompt[]
   depth: number
   onEdit: (p: Prompt) => void
-  onBranch: (parentId: string) => void
+  onAddChild: (parentId: string) => void
   onDrop: (draggedId: string, targetId: string | null) => void
   metricsMap: Map<string, PromptMetrics>
   timelineMap: Map<string, DayActivity[]>
@@ -146,7 +146,7 @@ function TreeNode({
           {collapsed ? '▶' : '▼'}
         </button>
 
-        {/* Sparkline for branch nodes */}
+        {/* Sparkline for parent nodes */}
         {hasChildren && timeline && timeline.length > 0 && (
           <Sparkline data={timeline} />
         )}
@@ -181,10 +181,10 @@ function TreeNode({
             edit
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); onBranch(prompt.id) }}
+            onClick={(e) => { e.stopPropagation(); onAddChild(prompt.id) }}
             className="px-1.5 py-0.5 text-[10px] font-mono text-text-muted hover:text-accent transition-colors"
           >
-            +branch
+            +child
           </button>
         </div>
       </div>
@@ -197,7 +197,7 @@ function TreeNode({
           allPrompts={allPrompts}
           depth={depth + 1}
           onEdit={onEdit}
-          onBranch={onBranch}
+          onAddChild={onAddChild}
           onDrop={onDrop}
           metricsMap={metricsMap}
           timelineMap={timelineMap}
@@ -408,7 +408,7 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
                 allPrompts={prompts}
                 depth={0}
                 onEdit={openEdit}
-                onBranch={(parentId) => openCreate(parentId)}
+                onAddChild={(parentId) => openCreate(parentId)}
                 onDrop={handleDrop}
                 metricsMap={metricsMap}
                 timelineMap={timelineMap}
