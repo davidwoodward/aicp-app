@@ -26,6 +26,8 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
   const [content, setContent] = useState('')
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [confirmArchive, setConfirmArchive] = useState(false)
+  const [archiving, setArchiving] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialLoad = useRef(true)
   const contentRef = useRef<HTMLTextAreaElement>(null)
@@ -191,24 +193,56 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
           {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : ''}
         </span>
 
-        <button
-          onClick={async () => {
-            if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
-            try {
-              await snippetsApi.delete(snippetId)
-              onClose()
-            } catch { /* best-effort */ }
-          }}
-          style={{
-            fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '3px 10px',
-            borderRadius: '4px', background: 'none',
-            color: 'var(--color-text-muted)', border: '1px solid var(--color-border)',
-            cursor: 'pointer', flexShrink: 0,
-          }}
-          title="Archive snippet"
-        >
-          Archive
-        </button>
+        {confirmArchive ? (
+          <span className="flex items-center gap-1.5" style={{ flexShrink: 0 }}>
+            <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>Archive?</span>
+            <button
+              disabled={archiving}
+              onClick={async () => {
+                if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+                setArchiving(true)
+                try {
+                  await snippetsApi.delete(snippetId)
+                  onClose()
+                } catch {
+                  setArchiving(false)
+                  setConfirmArchive(false)
+                }
+              }}
+              style={{
+                fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '2px 8px',
+                borderRadius: '4px', background: archiving ? 'var(--color-surface-2)' : 'rgba(239, 68, 68, 0.8)',
+                color: '#fff', border: 'none', cursor: archiving ? 'default' : 'pointer',
+              }}
+            >
+              {archiving ? 'Archiving...' : 'Yes'}
+            </button>
+            <button
+              onClick={() => setConfirmArchive(false)}
+              style={{
+                fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '2px 8px',
+                borderRadius: '4px', background: 'none',
+                color: 'var(--color-text-muted)', border: '1px solid var(--color-border)',
+                cursor: 'pointer',
+              }}
+            >
+              No
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setConfirmArchive(true)}
+            style={{
+              fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '3px 10px',
+              borderRadius: '4px', background: 'none',
+              color: 'var(--color-text-muted)', border: '1px solid var(--color-border)',
+              cursor: 'pointer', flexShrink: 0,
+            }}
+            title="Archive snippet"
+          >
+            Archive
+          </button>
+        )}
       </div>
 
       {/* Body */}
