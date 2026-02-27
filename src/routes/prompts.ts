@@ -156,11 +156,11 @@ export function registerPromptRoutes(app: FastifyInstance) {
     if (!body.project_id || typeof body.project_id !== "string") {
       return reply.status(400).send({ error: "project_id is required" });
     }
-    if (!body.title || typeof body.title !== "string") {
-      return reply.status(400).send({ error: "title is required" });
+    if (body.title !== undefined && typeof body.title !== "string") {
+      return reply.status(400).send({ error: "title must be a string" });
     }
-    if (!body.body || typeof body.body !== "string") {
-      return reply.status(400).send({ error: "body is required" });
+    if (body.body !== undefined && typeof body.body !== "string") {
+      return reply.status(400).send({ error: "body must be a string" });
     }
     if (body.order_index === undefined || typeof body.order_index !== "number") {
       return reply.status(400).send({ error: "order_index is required and must be a number" });
@@ -174,8 +174,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const prompt = await createPrompt({
       project_id: body.project_id,
       parent_prompt_id,
-      title: body.title,
-      body: body.body,
+      title: (body.title as string) || "",
+      body: (body.body as string) || "",
       order_index: body.order_index,
     });
 
@@ -312,18 +312,21 @@ export function registerPromptRoutes(app: FastifyInstance) {
 
     const updated = await getPrompt(id);
 
-    const actionType = body.status !== undefined && Object.keys(updates).length === 0
-      ? "status_change" as const
-      : "update" as const;
+    const skipLog = (req.query as Record<string, string>).skip_log === "true";
+    if (!skipLog) {
+      const actionType = body.status !== undefined && Object.keys(updates).length === 0
+        ? "status_change" as const
+        : "update" as const;
 
-    await logActivity({
-      project_id: existing.project_id,
-      entity_type: "prompt",
-      entity_id: id,
-      action_type: actionType,
-      metadata: { before_state: beforeState, after_state: updated as unknown as Record<string, unknown> },
-      actor: "user",
-    });
+      await logActivity({
+        project_id: existing.project_id,
+        entity_type: "prompt",
+        entity_id: id,
+        action_type: actionType,
+        metadata: { before_state: beforeState, after_state: updated as unknown as Record<string, unknown> },
+        actor: "user",
+      });
+    }
 
     return updated;
   });
