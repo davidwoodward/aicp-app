@@ -76,12 +76,36 @@ npm start            # Run compiled output
 - WebSocket handlers go in `src/websocket/` (routes use `{ websocket: true }`)
 - Fastify handles HTTP and WebSocket on the same port (Cloud Run exposes one port)
 
-## Auto-Generated Names
+## Auto-Generated Names and Titles
 
 When auto-generating a name from content (e.g. snippets, prompts), use this algorithm:
 1. Take the first line of the content
 2. If 30 characters or fewer, use the full first line as the name
 3. If longer, find the first word break (space) at or after position 30, and use everything to the left of it
+
+## UI Patterns
+
+### Delete / Archive Actions
+
+Destructive actions (delete, archive) use a **red trash can SVG icon** — never a text button. The icon uses `stroke="var(--color-danger)"` and is placed inline in the header/title bar of the entity being edited.
+
+**Flow:**
+1. User clicks the red trash icon
+2. Icon is replaced inline with a confirmation: `"Delete?" [Yes] [No]`
+3. **Yes** button: red background (`rgba(239, 68, 68, 0.8)`), white text. Shows `"Deleting..."` while in progress.
+4. **No** button: muted text, outlined with `border-border`
+5. On success: close the editor and refresh the parent list
+6. On error: revert to the trash icon state
+
+**Trash icon SVG** (14x14, same as TopBar icons):
+```html
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <polyline points="3 6 5 6 21 6" />
+  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+</svg>
+```
+
+**Reference implementations:** `TopBar.tsx` (icon), `SnippetManagementPanel.tsx` (inline confirm pattern), `SnippetEditor.tsx` (full pattern)
 
 ## Docker
 
