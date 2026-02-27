@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { loadLLMConfig, isValidProvider } from "../llm/config";
-import { getSetting, upsertSetting } from "../firestore/settings";
+import { loadLLMConfig } from "../llm/config";
+import { getSetting } from "../firestore/settings";
 import {
   getProviderStatuses,
   getRegistrySnapshot,
@@ -16,9 +16,9 @@ interface SelectBody {
 
 export function registerModelRoutes(app: FastifyInstance) {
   // ── GET /models — existing endpoint (unchanged response shape) ────────
-  app.get("/models", async () => {
+  app.get("/models", async (req) => {
     const config = loadLLMConfig();
-    const setting = await getSetting("execution_llm").catch(() => null);
+    const setting = await getSetting("execution_llm", req.user.id).catch(() => null);
 
     return {
       default_provider: config.defaultProvider,

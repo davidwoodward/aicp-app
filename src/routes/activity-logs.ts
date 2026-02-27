@@ -16,10 +16,13 @@ export function registerActivityLogRoutes(app: FastifyInstance) {
       entity_type?: EntityType;
       entity_id?: string;
       project_id?: string;
+      user_id?: string;
       since?: string;
       limit?: number;
       cursor?: string;
-    } = {};
+    } = {
+      user_id: req.user.id,
+    };
 
     if (query.entity_type) filters.entity_type = query.entity_type as EntityType;
     if (query.entity_id) filters.entity_id = query.entity_id;
@@ -59,6 +62,11 @@ export function registerActivityLogRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "activity log event not found" });
     }
 
+    // Verify ownership
+    if (event.user_id && event.user_id !== req.user.id) {
+      return reply.status(404).send({ error: "activity log event not found" });
+    }
+
     // If caller provides project_id, verify event belongs to that project
     if (query.project_id && event.project_id && query.project_id !== event.project_id) {
       return reply.status(403).send({ error: "event does not belong to this project" });
@@ -85,6 +93,9 @@ export function registerActivityLogRoutes(app: FastifyInstance) {
     const { event_id } = req.params as { event_id: string };
     const event = await getActivityLog(event_id);
     if (!event) return reply.status(404).send({ error: "not found" });
+    if (event.user_id && event.user_id !== req.user.id) {
+      return reply.status(404).send({ error: "not found" });
+    }
     await deleteActivityLog(event_id);
     return { deleted: true };
   });

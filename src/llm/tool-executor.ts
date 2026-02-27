@@ -10,17 +10,26 @@ import {
   listSnippetCollections,
 } from "../firestore/snippet-collections";
 
-export async function executeTool(toolCall: ToolCall): Promise<string> {
+export interface ToolUserContext {
+  user_id: string;
+  tenant_id: string;
+}
+
+export async function executeTool(toolCall: ToolCall, userCtx?: ToolUserContext): Promise<string> {
   const args = JSON.parse(toolCall.arguments);
+  const uid = userCtx?.user_id || "system";
+  const tid = userCtx?.tenant_id || uid;
 
   switch (toolCall.name) {
     case "list_projects": {
-      const projects = await listProjects();
+      const projects = await listProjects(uid);
       return JSON.stringify(projects);
     }
 
     case "create_project": {
       const project = await createProject({
+        user_id: uid,
+        tenant_id: tid,
         name: args.name,
         description: args.description,
       });
@@ -29,6 +38,8 @@ export async function executeTool(toolCall: ToolCall): Promise<string> {
 
     case "add_prompt": {
       const prompt = await createPrompt({
+        user_id: uid,
+        tenant_id: tid,
         project_id: args.project_id,
         title: args.title,
         body: args.body,
@@ -39,12 +50,14 @@ export async function executeTool(toolCall: ToolCall): Promise<string> {
     }
 
     case "list_snippets": {
-      const snippets = await listSnippets();
+      const snippets = await listSnippets(uid);
       return JSON.stringify(snippets);
     }
 
     case "create_snippet": {
       const snippet = await createSnippet({
+        user_id: uid,
+        tenant_id: tid,
         name: args.name,
         content: args.content,
       });
@@ -52,12 +65,14 @@ export async function executeTool(toolCall: ToolCall): Promise<string> {
     }
 
     case "list_snippet_collections": {
-      const collections = await listSnippetCollections();
+      const collections = await listSnippetCollections(uid);
       return JSON.stringify(collections);
     }
 
     case "create_snippet_collection": {
       const collection = await createSnippetCollection({
+        user_id: uid,
+        tenant_id: tid,
         name: args.name,
         description: args.description || "",
       });

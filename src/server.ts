@@ -4,6 +4,7 @@ import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import { registerRoutes } from "./routes";
 import { registerWebSocket } from "./websocket";
+import { authHook } from "./middleware/auth";
 import "./firestore/client";
 
 const app = Fastify({ logger: true });
@@ -15,6 +16,9 @@ async function start() {
 
   registerRoutes(app);
   registerWebSocket(app);
+
+  // Auth hook on /api/* routes (skip /api/health GET and /api/auth/login POST)
+  app.addHook("onRequest", authHook);
 
   // Serve frontend static files in production
   const frontendDir = path.join(__dirname, "..", "frontend", "dist");

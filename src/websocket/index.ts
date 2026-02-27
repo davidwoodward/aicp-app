@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { verifyGoogleToken } from "../middleware/auth";
 import {
   registerAgent,
   removeBySocket,
@@ -63,7 +64,20 @@ const VALID_ROLES: MessageRole[] = ["user", "claude"];
 
 export function registerWebSocket(app: FastifyInstance) {
   // Agent communication channel
-  app.get("/ws", { websocket: true }, (socket) => {
+  app.get("/ws", { websocket: true }, async (socket, request) => {
+    // Verify auth token from query param
+    const url = new URL(request.url!, `http://${request.headers.host}`);
+    const token = url.searchParams.get("token");
+    if (token) {
+      try {
+        await verifyGoogleToken(token);
+      } catch {
+        socket.send(JSON.stringify({ type: "error", error: "invalid auth token" }));
+        socket.close(1008, "unauthorized");
+        return;
+      }
+    }
+
     let agentId: string | null = null;
 
     socket.on("message", async (data: Buffer) => {
@@ -104,7 +118,11 @@ export function registerWebSocket(app: FastifyInstance) {
             // Upsert agent in Firestore
             const existing = await getAgent(msg.agent_id);
             if (!existing) {
+              // Inherit user_id from the project the agent is registering for
+              const proj = project;
               await createAgent({
+                user_id: proj.user_id || "",
+                tenant_id: proj.tenant_id || "",
                 project_id: msg.project_id,
                 machine_name: msg.machine_name,
                 tool_type: "claude_code",
@@ -204,8 +222,21 @@ export function registerWebSocket(app: FastifyInstance) {
 
   // Telemetry broadcast channel for UI clients (project-scoped)
   app.get("/ws/telemetry", { websocket: true }, async (socket, request) => {
-    const url = new URL(request.url!, `http://${request.headers.host}`);
-    const projectId = url.searchParams.get("project_id");
+    const telUrl = new URL(request.url!, `http://${request.headers.host}`);
+
+    // Verify auth token from query param
+    const telToken = telUrl.searchParams.get("token");
+    if (telToken) {
+      try {
+        await verifyGoogleToken(telToken);
+      } catch {
+        socket.send(JSON.stringify({ type: "error", error: "invalid auth token" }));
+        socket.close(1008, "unauthorized");
+        return;
+      }
+    }
+
+    const projectId = telUrl.searchParams.get("project_id");
 
     if (!projectId) {
       socket.send(JSON.stringify({ type: "error", error: "project_id query parameter is required" }));

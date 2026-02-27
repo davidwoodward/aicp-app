@@ -1,14 +1,17 @@
 import { Link, useLocation } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
+import AvatarDropdown from './AvatarDropdown'
 
 interface Props {
   onCmdK?: () => void
   onOpenDeleted?: () => void
   onOpenSettings?: () => void
   onPromptsClick?: () => void
+  onOpenProfile?: () => void
+  onOpenModels?: () => void
 }
 
-export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPromptsClick }: Props) {
+export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPromptsClick, onOpenProfile, onOpenModels }: Props) {
   const location = useLocation()
   const isPrompts = location.pathname === '/'
   const isProjects = location.pathname.startsWith('/projects')
@@ -89,6 +92,10 @@ export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPrompt
       )}
 
       <ThemeToggle />
+
+      {onOpenProfile && onOpenModels && (
+        <AvatarDropdown onOpenProfile={onOpenProfile} onOpenModels={onOpenModels} />
+      )}
     </header>
   )
 }

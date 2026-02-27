@@ -4,6 +4,8 @@ const collection = db.collection("projects");
 
 export interface Project {
   id: string;
+  user_id: string;
+  tenant_id: string;
   name: string;
   description: string;
   created_at: string;
@@ -28,15 +30,21 @@ export async function getProject(id: string): Promise<Project | null> {
   return doc.data() as Project;
 }
 
-export async function listProjects(): Promise<Project[]> {
-  const snapshot = await collection.orderBy("created_at", "desc").get();
+export async function listProjects(userId: string): Promise<Project[]> {
+  const snapshot = await collection
+    .where("user_id", "==", userId)
+    .orderBy("created_at", "desc")
+    .get();
   return snapshot.docs
     .map((doc) => doc.data() as Project)
     .filter((p) => !p.deleted_at);
 }
 
-export async function listDeletedProjects(): Promise<Project[]> {
-  const snapshot = await collection.orderBy("created_at", "desc").get();
+export async function listDeletedProjects(userId: string): Promise<Project[]> {
+  const snapshot = await collection
+    .where("user_id", "==", userId)
+    .orderBy("created_at", "desc")
+    .get();
   return snapshot.docs
     .map((doc) => doc.data() as Project)
     .filter((p) => !!p.deleted_at)

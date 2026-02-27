@@ -4,6 +4,8 @@ const collection = db.collection("snippet_collections");
 
 export interface SnippetCollection {
   id: string;
+  user_id: string;
+  tenant_id: string;
   name: string;
   description: string;
   snippet_ids: string[];
@@ -32,16 +34,18 @@ export async function getSnippetCollection(id: string): Promise<SnippetCollectio
   return doc.data() as SnippetCollection;
 }
 
-export async function listSnippetCollections(): Promise<SnippetCollection[]> {
+export async function listSnippetCollections(userId: string): Promise<SnippetCollection[]> {
   const snapshot = await collection
+    .where("user_id", "==", userId)
     .where("deleted_at", "==", null)
     .orderBy("created_at", "desc")
     .get();
   return snapshot.docs.map((doc) => doc.data() as SnippetCollection);
 }
 
-export async function listDeletedSnippetCollections(): Promise<SnippetCollection[]> {
+export async function listDeletedSnippetCollections(userId: string): Promise<SnippetCollection[]> {
   const snapshot = await collection
+    .where("user_id", "==", userId)
     .where("deleted_at", "!=", null)
     .orderBy("deleted_at", "desc")
     .get();

@@ -67,6 +67,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const afterOrder = promptIds.map((id, i) => ({ id, order_index: i }));
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: body.project_id,
       entity_type: "prompt",
       entity_id: body.project_id,
@@ -87,7 +89,7 @@ export function registerPromptRoutes(app: FastifyInstance) {
     }
 
     const prompt = await getPrompt(id);
-    if (!prompt) {
+    if (!prompt || prompt.user_id !== req.user.id) {
       return reply.status(404).send({ error: "prompt not found" });
     }
     if (prompt.status !== "ready") {
@@ -106,6 +108,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     }
 
     const session = await createSession({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: prompt.project_id,
       agent_id: body.agent_id,
     });
@@ -131,6 +135,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     });
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: prompt.project_id,
       entity_type: "prompt",
       entity_id: id,
@@ -173,6 +179,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
         : null;
 
     const prompt = await createPrompt({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: body.project_id,
       parent_prompt_id,
       title: (body.title as string) || "",
@@ -181,6 +189,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     });
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: body.project_id,
       entity_type: "prompt",
       entity_id: prompt.id,
@@ -192,14 +202,14 @@ export function registerPromptRoutes(app: FastifyInstance) {
     return reply.status(201).send(prompt);
   });
 
-  app.get("/prompts", async (req, reply) => {
+  app.get("/prompts", async (req) => {
     const { project_id } = req.query as { project_id?: string };
 
     if (project_id) {
       return listPromptsByProject(project_id);
     }
 
-    return listAllActivePrompts();
+    return listAllActivePrompts(req.user.id);
   });
 
   app.get("/prompts/deleted", async (req, reply) => {
@@ -216,7 +226,7 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const existing = await getPrompt(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "prompt not found" });
     }
     if (!existing.deleted_at) {
@@ -228,6 +238,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const restored = await getPrompt(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: existing.project_id,
       entity_type: "prompt",
       entity_id: id,
@@ -243,7 +255,7 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const existing = await getPrompt(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "prompt not found" });
     }
     if (!existing.deleted_at) {
@@ -253,6 +265,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     await hardDeletePrompt(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: existing.project_id,
       entity_type: "prompt",
       entity_id: id,
@@ -269,7 +283,7 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const body = req.body as Record<string, unknown>;
 
     const existing = await getPrompt(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "prompt not found" });
     }
 
@@ -320,6 +334,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
         : "update" as const;
 
       await logActivity({
+        user_id: req.user.id,
+        tenant_id: req.user.tenant_id,
         project_id: existing.project_id,
         entity_type: "prompt",
         entity_id: id,
@@ -336,7 +352,7 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const existing = await getPrompt(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "prompt not found" });
     }
 
@@ -345,6 +361,8 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const afterState = await getPrompt(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: existing.project_id,
       entity_type: "prompt",
       entity_id: id,
@@ -360,7 +378,7 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const prompt = await getPrompt(id);
-    if (!prompt) {
+    if (!prompt || prompt.user_id !== req.user.id) {
       return reply.status(404).send({ error: "prompt not found" });
     }
 
@@ -379,7 +397,7 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const model = typeof body?.model === "string" ? body.model : providerConfig.model;
     const provider = createProvider(providerName, { ...providerConfig, model });
 
-    const refineSettings = await getSetting("refine");
+    const refineSettings = await getSetting("refine", req.user.id);
     const systemPrompt =
       (refineSettings?.system_prompt as string) ||
       DEFAULT_REFINE_SYSTEM_PROMPT;

@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { interpret } from "../llm/controlPlane";
-import { executeTool } from "../llm/tool-executor";
+import { executeTool, type ToolUserContext } from "../llm/tool-executor";
 import { logActivity } from "../middleware/activityLogger";
 
 interface PlanBody {
@@ -39,7 +39,8 @@ export function registerPlanRoutes(app: FastifyInstance) {
       arguments: JSON.stringify(payload ?? {}),
     };
 
-    const resultStr = await executeTool(toolCall);
+    const userCtx: ToolUserContext = { user_id: req.user.id, tenant_id: req.user.tenant_id };
+    const resultStr = await executeTool(toolCall, userCtx);
 
     let result: unknown;
     try {

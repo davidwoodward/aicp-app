@@ -7,6 +7,8 @@ export type ToolType = "claude_code";
 
 export interface Agent {
   id: string;
+  user_id: string;
+  tenant_id: string;
   project_id: string;
   machine_name: string;
   tool_type: ToolType;

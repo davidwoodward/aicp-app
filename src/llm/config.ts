@@ -23,8 +23,47 @@ export function isValidProvider(name: string): name is ProviderName {
   return PROVIDER_NAMES.includes(name as ProviderName);
 }
 
-function isRealKey(key: string): boolean {
+export function isRealKey(key: string): boolean {
   return !!key && key !== "not-set" && key !== "placeholder";
+}
+
+export interface UserLLMKeys {
+  gemini_api_key?: string;
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+}
+
+/**
+ * Merge user-provided API keys over environment-variable defaults.
+ * Returns a new LLMConfig with user keys taking precedence when present.
+ */
+export function loadUserLLMConfig(userKeys: UserLLMKeys): LLMConfig {
+  const base = loadLLMConfig();
+
+  const keyMap: Record<ProviderName, string | undefined> = {
+    gemini: userKeys.gemini_api_key,
+    openai: userKeys.openai_api_key,
+    anthropic: userKeys.anthropic_api_key,
+  };
+
+  for (const name of PROVIDER_NAMES) {
+    const userKey = keyMap[name];
+    if (userKey && isRealKey(userKey)) {
+      base.providers[name] = {
+        ...base.providers[name],
+        apiKey: userKey,
+        configured: true,
+      };
+    }
+  }
+
+  // Re-evaluate default provider with user keys applied
+  if (!isValidProvider(base.defaultProvider) || !base.providers[base.defaultProvider as ProviderName].configured) {
+    const first = PROVIDER_NAMES.find((n) => base.providers[n].configured);
+    base.defaultProvider = first || "gemini";
+  }
+
+  return base;
 }
 
 export function loadLLMConfig(): LLMConfig {

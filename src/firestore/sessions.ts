@@ -4,6 +4,8 @@ const collection = db.collection("sessions");
 
 export interface Session {
   id: string;
+  user_id: string;
+  tenant_id: string;
   project_id: string;
   agent_id: string;
   started_at: string;

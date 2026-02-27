@@ -4,6 +4,8 @@ const collection = db.collection("conversations");
 
 export interface Conversation {
   id: string;
+  user_id: string;
+  tenant_id: string;
   title: string;
   model: string;
   provider: string;
@@ -32,8 +34,11 @@ export async function getConversation(id: string): Promise<Conversation | null> 
   return doc.data() as Conversation;
 }
 
-export async function listConversations(): Promise<Conversation[]> {
-  const snapshot = await collection.orderBy("updated_at", "desc").get();
+export async function listConversations(userId: string): Promise<Conversation[]> {
+  const snapshot = await collection
+    .where("user_id", "==", userId)
+    .orderBy("updated_at", "desc")
+    .get();
   return snapshot.docs.map((doc) => doc.data() as Conversation);
 }
 
