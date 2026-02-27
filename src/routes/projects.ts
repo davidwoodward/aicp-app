@@ -25,9 +25,16 @@ export function registerProjectRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "description is required" });
     }
 
-    const project = await createProject({ name, description });
+    const project = await createProject({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
+      name,
+      description,
+    });
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: project.id,
       entity_type: "project",
       entity_id: project.id,
@@ -39,18 +46,18 @@ export function registerProjectRoutes(app: FastifyInstance) {
     return reply.status(201).send(project);
   });
 
-  app.get("/projects", async () => {
-    return listProjects();
+  app.get("/projects", async (req) => {
+    return listProjects(req.user.id);
   });
 
-  app.get("/projects/deleted", async () => {
-    return listDeletedProjects();
+  app.get("/projects/deleted", async (req) => {
+    return listDeletedProjects(req.user.id);
   });
 
   app.get("/projects/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const project = await getProject(id);
-    if (!project) {
+    if (!project || project.user_id !== req.user.id) {
       return reply.status(404).send({ error: "project not found" });
     }
     return project;
@@ -59,7 +66,7 @@ export function registerProjectRoutes(app: FastifyInstance) {
   app.get("/projects/:id/stats", async (req, reply) => {
     const { id } = req.params as { id: string };
     const project = await getProject(id);
-    if (!project) {
+    if (!project || project.user_id !== req.user.id) {
       return reply.status(404).send({ error: "project not found" });
     }
 
@@ -76,7 +83,7 @@ export function registerProjectRoutes(app: FastifyInstance) {
     const body = req.body as Record<string, unknown>;
 
     const existing = await getProject(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "project not found" });
     }
 
@@ -102,6 +109,8 @@ export function registerProjectRoutes(app: FastifyInstance) {
     const afterState = { ...existing, ...updates };
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: id,
       entity_type: "project",
       entity_id: id,
@@ -116,7 +125,7 @@ export function registerProjectRoutes(app: FastifyInstance) {
   app.get("/projects/:id/tree-metrics", async (req, reply) => {
     const { id } = req.params as { id: string };
     const project = await getProject(id);
-    if (!project) {
+    if (!project || project.user_id !== req.user.id) {
       return reply.status(404).send({ error: "project not found" });
     }
     return computeTreeMetrics(id);
@@ -126,13 +135,15 @@ export function registerProjectRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const existing = await getProject(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "project not found" });
     }
 
     await softDeleteProject(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: id,
       entity_type: "project",
       entity_id: id,
@@ -148,7 +159,7 @@ export function registerProjectRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const existing = await getProject(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "project not found" });
     }
     if (!existing.deleted_at) {
@@ -158,6 +169,8 @@ export function registerProjectRoutes(app: FastifyInstance) {
     await restoreProject(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: id,
       entity_type: "project",
       entity_id: id,
@@ -173,7 +186,7 @@ export function registerProjectRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const existing = await getProject(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "project not found" });
     }
     if (!existing.deleted_at) {
@@ -183,6 +196,8 @@ export function registerProjectRoutes(app: FastifyInstance) {
     await hardDeleteProject(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: id,
       entity_type: "project",
       entity_id: id,

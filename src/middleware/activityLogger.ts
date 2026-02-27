@@ -8,6 +8,8 @@ export type Actor = "user" | "system" | "llm";
 
 export interface ActivityLog {
   id: string;
+  user_id?: string;
+  tenant_id?: string;
   project_id: string | null;
   entity_type: EntityType;
   entity_id: string;
@@ -44,6 +46,7 @@ export async function listActivityLogs(filters?: {
   entity_type?: EntityType;
   entity_id?: string;
   project_id?: string;
+  user_id?: string;
   since?: string;
   limit?: number;
   cursor?: string;
@@ -58,6 +61,9 @@ export async function listActivityLogs(filters?: {
   }
   if (filters?.project_id) {
     query = query.where("project_id", "==", filters.project_id);
+  }
+  if (filters?.user_id) {
+    query = query.where("user_id", "==", filters.user_id);
   }
   if (filters?.since) {
     query = query.where("created_at", ">=", filters.since);

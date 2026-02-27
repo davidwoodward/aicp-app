@@ -6,6 +6,8 @@ export type PromptStatus = "draft" | "ready" | "sent" | "done";
 
 export interface Prompt {
   id: string;
+  user_id: string;
+  tenant_id: string;
   project_id: string;
   parent_prompt_id: string | null;
   title: string;
@@ -53,8 +55,11 @@ export async function listPromptsByProject(projectId: string): Promise<Prompt[]>
     .filter((p) => !p.deleted_at);
 }
 
-export async function listAllActivePrompts(): Promise<Prompt[]> {
-  const snapshot = await collection.orderBy("order_index", "asc").get();
+export async function listAllActivePrompts(userId: string): Promise<Prompt[]> {
+  const snapshot = await collection
+    .where("user_id", "==", userId)
+    .orderBy("order_index", "asc")
+    .get();
   return snapshot.docs
     .map((doc) => doc.data() as Prompt)
     .filter((p) => !p.deleted_at);

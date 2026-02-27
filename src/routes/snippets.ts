@@ -24,13 +24,12 @@ import { logActivity } from "../middleware/activityLogger";
 export function registerSnippetRoutes(app: FastifyInstance) {
   // --- Snippets ---
 
-  // Static routes BEFORE parametric :id routes
-  app.get("/snippets/deleted", async () => {
-    return listDeletedSnippets();
+  app.get("/snippets/deleted", async (req) => {
+    return listDeletedSnippets(req.user.id);
   });
 
-  app.get("/snippets", async () => {
-    return listSnippets();
+  app.get("/snippets", async (req) => {
+    return listSnippets(req.user.id);
   });
 
   app.post("/snippets", async (req, reply) => {
@@ -44,11 +43,15 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     }
 
     const snippet = await createSnippet({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       name: body.name,
       content: body.content,
     });
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet",
       entity_id: snippet.id,
@@ -63,7 +66,7 @@ export function registerSnippetRoutes(app: FastifyInstance) {
   app.get("/snippets/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const snippet = await getSnippet(id);
-    if (!snippet) {
+    if (!snippet || snippet.user_id !== req.user.id) {
       return reply.status(404).send({ error: "snippet not found" });
     }
     return snippet;
@@ -74,7 +77,7 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     const body = req.body as Record<string, unknown>;
 
     const existing = await getSnippet(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "snippet not found" });
     }
 
@@ -90,6 +93,8 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     const afterState = { ...existing, ...updates };
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet",
       entity_id: id,
@@ -101,18 +106,19 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     return afterState;
   });
 
-  // Soft delete
   app.delete("/snippets/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
 
     const existing = await getSnippet(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "snippet not found" });
     }
 
     await softDeleteSnippet(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet",
       entity_id: id,
@@ -124,12 +130,11 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  // Restore
   app.post("/snippets/:id/restore", async (req, reply) => {
     const { id } = req.params as { id: string };
 
     const existing = await getSnippet(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "snippet not found" });
     }
     if (!existing.deleted_at) {
@@ -140,6 +145,8 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     const restored = { ...existing, deleted_at: null, updated_at: new Date().toISOString() };
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet",
       entity_id: id,
@@ -151,12 +158,11 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     return restored;
   });
 
-  // Permanent delete
   app.post("/snippets/:id/permanent-delete", async (req, reply) => {
     const { id } = req.params as { id: string };
 
     const existing = await getSnippet(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "snippet not found" });
     }
     if (!existing.deleted_at) {
@@ -166,6 +172,8 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     await hardDeleteSnippet(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet",
       entity_id: id,
@@ -179,13 +187,12 @@ export function registerSnippetRoutes(app: FastifyInstance) {
 
   // --- Snippet Collections ---
 
-  // Static routes BEFORE parametric :id routes
-  app.get("/snippet-collections/deleted", async () => {
-    return listDeletedSnippetCollections();
+  app.get("/snippet-collections/deleted", async (req) => {
+    return listDeletedSnippetCollections(req.user.id);
   });
 
-  app.get("/snippet-collections", async () => {
-    return listSnippetCollections();
+  app.get("/snippet-collections", async (req) => {
+    return listSnippetCollections(req.user.id);
   });
 
   app.post("/snippet-collections", async (req, reply) => {
@@ -196,11 +203,15 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     }
 
     const snippetCollection = await createSnippetCollection({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       name: body.name,
       description: typeof body.description === "string" ? body.description : "",
     });
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet_collection",
       entity_id: snippetCollection.id,
@@ -217,7 +228,7 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     const body = req.body as Record<string, unknown>;
 
     const existing = await getSnippetCollection(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "collection not found" });
     }
 
@@ -234,6 +245,8 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     const afterState = { ...existing, ...updates };
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet_collection",
       entity_id: id,
@@ -245,18 +258,19 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     return afterState;
   });
 
-  // Soft delete
   app.delete("/snippet-collections/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
 
     const existing = await getSnippetCollection(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "collection not found" });
     }
 
     await softDeleteSnippetCollection(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet_collection",
       entity_id: id,
@@ -268,12 +282,11 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  // Restore
   app.post("/snippet-collections/:id/restore", async (req, reply) => {
     const { id } = req.params as { id: string };
 
     const existing = await getSnippetCollection(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "collection not found" });
     }
     if (!existing.deleted_at) {
@@ -284,6 +297,8 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     const restored = { ...existing, deleted_at: null };
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet_collection",
       entity_id: id,
@@ -295,12 +310,11 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     return restored;
   });
 
-  // Permanent delete
   app.post("/snippet-collections/:id/permanent-delete", async (req, reply) => {
     const { id } = req.params as { id: string };
 
     const existing = await getSnippetCollection(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "collection not found" });
     }
     if (!existing.deleted_at) {
@@ -310,6 +324,8 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     await hardDeleteSnippetCollection(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "snippet_collection",
       entity_id: id,

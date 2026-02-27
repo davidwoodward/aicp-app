@@ -7,8 +7,8 @@ const DEFAULT_REFINE_SYSTEM_PROMPT =
 const VALID_MODES = ["Manual", "Auto"] as const;
 
 export function registerSettingsRoutes(app: FastifyInstance) {
-  app.get("/settings/refine", async () => {
-    const doc = await getSetting("refine");
+  app.get("/settings/refine", async (req) => {
+    const doc = await getSetting("refine", req.user.id);
     return {
       mode: (doc?.mode as string) === "Auto" ? "Auto" : "Manual",
       system_prompt:
@@ -51,9 +51,9 @@ export function registerSettingsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "no valid fields to update" });
     }
 
-    await upsertSetting("refine", updates);
+    await upsertSetting("refine", updates, req.user.id);
 
-    const doc = await getSetting("refine");
+    const doc = await getSetting("refine", req.user.id);
     return {
       mode: (doc?.mode as string) === "Auto" ? "Auto" : "Manual",
       system_prompt:

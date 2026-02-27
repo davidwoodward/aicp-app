@@ -14,8 +14,8 @@ import { loadLLMConfig } from "../llm/config";
 import { logActivity } from "../middleware/activityLogger";
 
 export function registerConversationRoutes(app: FastifyInstance) {
-  app.get("/conversations", async () => {
-    return listConversations();
+  app.get("/conversations", async (req) => {
+    return listConversations(req.user.id);
   });
 
   app.post("/conversations", async (req, reply) => {
@@ -28,9 +28,17 @@ export function registerConversationRoutes(app: FastifyInstance) {
       ? body.model
       : config.providers[provider as keyof typeof config.providers]?.model || "";
 
-    const conversation = await createConversation({ title, model, provider });
+    const conversation = await createConversation({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
+      title,
+      model,
+      provider,
+    });
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "conversation",
       entity_id: conversation.id,
@@ -45,7 +53,7 @@ export function registerConversationRoutes(app: FastifyInstance) {
   app.get("/conversations/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const conversation = await getConversation(id);
-    if (!conversation) {
+    if (!conversation || conversation.user_id !== req.user.id) {
       return reply.status(404).send({ error: "conversation not found" });
     }
     return conversation;
@@ -56,7 +64,7 @@ export function registerConversationRoutes(app: FastifyInstance) {
     const body = req.body as Record<string, unknown>;
 
     const existing = await getConversation(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "conversation not found" });
     }
 
@@ -73,6 +81,8 @@ export function registerConversationRoutes(app: FastifyInstance) {
     const afterState = { ...existing, ...updates };
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "conversation",
       entity_id: id,
@@ -88,7 +98,7 @@ export function registerConversationRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const existing = await getConversation(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "conversation not found" });
     }
 
@@ -96,6 +106,8 @@ export function registerConversationRoutes(app: FastifyInstance) {
     await deleteConversation(id);
 
     await logActivity({
+      user_id: req.user.id,
+      tenant_id: req.user.tenant_id,
       project_id: null,
       entity_type: "conversation",
       entity_id: id,
@@ -111,7 +123,7 @@ export function registerConversationRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
 
     const existing = await getConversation(id);
-    if (!existing) {
+    if (!existing || existing.user_id !== req.user.id) {
       return reply.status(404).send({ error: "conversation not found" });
     }
 

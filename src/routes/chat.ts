@@ -4,7 +4,7 @@ import { trackExecutionStarted, trackExecutionCompleted } from "../telemetry/tel
 import { createProvider } from "../llm/index";
 import { toolDefinitions } from "../llm/tools";
 import { SYSTEM_PROMPT } from "../llm/system-prompt";
-import { executeTool } from "../llm/tool-executor";
+import { executeTool, type ToolUserContext } from "../llm/tool-executor";
 import { ChatMessage, ToolCall } from "../llm/provider";
 import {
   createConversation,
@@ -77,11 +77,13 @@ export function registerChatRoutes(app: FastifyInstance) {
     let conversationId = body.conversation_id as string | undefined;
     if (conversationId) {
       const existing = await getConversation(conversationId);
-      if (!existing) {
+      if (!existing || existing.user_id !== req.user.id) {
         return reply.status(404).send({ error: "conversation not found" });
       }
     } else {
       const conversation = await createConversation({
+        user_id: req.user.id,
+        tenant_id: req.user.tenant_id,
         title: userMessage.slice(0, 100),
         model,
         provider: providerName,
@@ -190,8 +192,9 @@ export function registerChatRoutes(app: FastifyInstance) {
         });
 
         // Execute each tool call and add results
+        const userCtx: ToolUserContext = { user_id: req.user.id, tenant_id: req.user.tenant_id };
         for (const tc of iterationToolCalls) {
-          const result = await executeTool(tc);
+          const result = await executeTool(tc, userCtx);
           sendSSE("tool_result", { tool_call_id: tc.id, name: tc.name, result });
 
           // Log activity for mutating tool calls
