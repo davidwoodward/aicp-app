@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Prompt, Agent, PromptStatus } from '../api'
 import { prompts as promptsApi } from '../api'
+import { useError } from '../hooks/useError'
 
 const ALL_STATUSES: PromptStatus[] = ['draft', 'ready', 'sent', 'done']
 
@@ -33,6 +34,7 @@ interface Props {
   fillHeight?: boolean
   provider?: string
   model?: string
+  previewLines?: number
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -64,7 +66,8 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory, onClose, autoRefine, onRefineDismiss, onInsertSnippet, pendingSnippetContent, onSnippetInserted, initialEdit, fillHeight, provider, model }: Props) {
+export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory, onClose, autoRefine, onRefineDismiss, onInsertSnippet, pendingSnippetContent, onSnippetInserted, initialEdit, fillHeight, provider, model, previewLines }: Props) {
+  const { showError } = useError()
   const [refining, setRefining] = useState(!!initialEdit)
   const [expanded, setExpanded] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
@@ -98,7 +101,6 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
       setTitle(prompt.title)
       setBody(prompt.body)
       setRefining(true)
-      setError(null)
     }
   }, [autoRefine])
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
@@ -107,7 +109,6 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
   const [executing, setExecuting] = useState(false)
   const [aiRefining, setAiRefining] = useState(false)
   const [output, setOutput] = useState<{ label: string; detail: string } | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   // Auto-save with debounce
   const doAutoSave = useCallback(async (t: string, b: string) => {
@@ -189,13 +190,12 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
       const updated = await promptsApi.update(prompt.id, { status: newStatus })
       onUpdate(updated)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Status change failed')
+      showError(err instanceof Error ? err.message : 'Status change failed')
     }
   }
 
   async function handleExecute() {
     setExecuting(true)
-    setError(null)
     try {
       if (agents.length === 0) throw new Error('No agents connected')
       const idle = agents.find(a => a.status === 'idle')
@@ -212,7 +212,7 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
         sent_at: new Date().toISOString(),
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Execution failed')
+      showError(err instanceof Error ? err.message : 'Execution failed')
     } finally {
       setExecuting(false)
     }
@@ -224,13 +224,12 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
       saveTimer.current = null
     }
     setSaving(true)
-    setError(null)
     try {
       const updated = await promptsApi.update(prompt.id, { title, body })
       onUpdate(updated)
       setSaveStatus('saved')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
+      showError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setSaving(false)
     }
@@ -238,7 +237,6 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
 
   async function handleAiRefine() {
     setAiRefining(true)
-    setError(null)
     try {
       // Save current edits first so the API refines the latest content
       if (refining && (title !== prompt.title || body !== prompt.body)) {
@@ -255,7 +253,7 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
         setRefining(true)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Refine failed')
+      showError(err instanceof Error ? err.message : 'Refine failed')
     } finally {
       setAiRefining(false)
     }
@@ -265,7 +263,6 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
     setTitle(prompt.title)
     setBody(prompt.body)
     setRefining(false)
-    setError(null)
     onRefineDismiss?.()
   }
 
@@ -381,7 +378,7 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
             <div
               ref={bodyRef}
               className={`text-xs font-mono text-text-secondary leading-relaxed whitespace-pre-wrap break-words${fillHeight ? ' flex-1 overflow-y-auto' : ''}`}
-              style={!fillHeight && !expanded ? { maxHeight: '4.8em', overflow: 'hidden' } : undefined}
+              style={!fillHeight && !expanded ? { maxHeight: `${(previewLines ?? 3) * 1.6}em`, overflow: 'hidden' } : undefined}
             >
               {prompt.body || (
                 <span className="text-text-muted italic">No content</span>
@@ -429,13 +426,6 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
           <div className="text-[10px] font-mono text-text-muted mt-0.5">
             {output.detail}
           </div>
-        </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <div className="mx-4 mb-3 px-3 py-2 text-[10px] font-mono bg-danger/10 text-danger border border-danger/20 rounded">
-          {error}
         </div>
       )}
 

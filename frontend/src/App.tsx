@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { models as modelsApi } from './api'
+import { ErrorProvider } from './hooks/useError'
 import AppShell from './components/AppShell'
 import Layout from './components/Layout'
 import ProjectList from './pages/ProjectList'
@@ -33,17 +34,19 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      {/* Chat routes — 3-panel shell */}
-      <Route element={<AppShell provider={provider} model={model} onModelChange={handleModelChange} />}>
-        <Route path="/" element={<Chat provider={provider} model={model} onModelChange={handleModelChange} />} />
-      </Route>
+    <ErrorProvider>
+      <Routes>
+        {/* Chat routes — 3-panel shell */}
+        <Route element={<AppShell provider={provider} model={model} onModelChange={handleModelChange} />}>
+          <Route path="/" element={<Chat provider={provider} model={model} onModelChange={handleModelChange} />} />
+        </Route>
 
-      {/* Project routes — classic layout */}
-      <Route element={<Layout />}>
-        <Route path="/projects" element={<ProjectList />} />
-        <Route path="/projects/:projectId/*" element={<ProjectDetail />} />
-      </Route>
-    </Routes>
+        {/* Project routes — classic layout */}
+        <Route element={<Layout />}>
+          <Route path="/projects" element={<ProjectList />} />
+          <Route path="/projects/:projectId/*" element={<ProjectDetail />} />
+        </Route>
+      </Routes>
+    </ErrorProvider>
   )
 }

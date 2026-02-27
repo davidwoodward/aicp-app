@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import {
   activityLogs,
-  prompts as promptsApi,
   type ActivityLog,
   type Prompt,
   RestoreConflictError,
 } from '../api'
+import { useError } from '../hooks/useError'
 
 interface Props {
   projectId: string
@@ -56,10 +56,10 @@ function timeAgo(iso: string): string {
 }
 
 export default function HistoryPanel({ projectId, onRestore, onDismiss }: Props) {
+  const { showError } = useError()
   const [logs, setLogs] = useState<ActivityLog[]>([])
   const [loading, setLoading] = useState(true)
   const [restoringId, setRestoringId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     activityLogs.list({
@@ -74,7 +74,6 @@ export default function HistoryPanel({ projectId, onRestore, onDismiss }: Props)
 
   async function handleRestore(log: ActivityLog) {
     setRestoringId(log.id)
-    setError(null)
     try {
       const result = await activityLogs.restore(log.id)
       // Refetch the updated prompt
@@ -90,10 +89,10 @@ export default function HistoryPanel({ projectId, onRestore, onDismiss }: Props)
           const updated = result.entity as unknown as Prompt
           if (updated?.id) onRestore(updated)
         } catch (forceErr) {
-          setError(forceErr instanceof Error ? forceErr.message : 'Restore failed')
+          showError(forceErr instanceof Error ? forceErr.message : 'Restore failed')
         }
       } else {
-        setError(err instanceof Error ? err.message : 'Restore failed')
+        showError(err instanceof Error ? err.message : 'Restore failed')
       }
     } finally {
       setRestoringId(null)
@@ -132,19 +131,6 @@ export default function HistoryPanel({ projectId, onRestore, onDismiss }: Props)
           close
         </button>
       </div>
-
-      {error && (
-        <div
-          className="mx-4 mt-3 px-3 py-2 text-[10px] font-mono rounded"
-          style={{
-            background: 'rgba(239, 68, 68, 0.06)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            color: 'var(--color-danger)',
-          }}
-        >
-          {error}
-        </div>
-      )}
 
       {loading ? (
         <div className="px-4 py-6 text-center">

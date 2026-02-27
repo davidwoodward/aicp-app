@@ -17,6 +17,8 @@ import RefineDiff from '../components/RefineDiff'
 import HistoryPanel from '../components/HistoryPanel'
 import PromptExecutionHistory from '../components/PromptExecutionHistory'
 import { useCommandSuggestions } from '../hooks/useCommandSuggestions'
+import { useError } from '../hooks/useError'
+import ErrorContainer from '../components/ErrorContainer'
 
 interface Props {
   provider: string;
@@ -27,15 +29,15 @@ interface Props {
 interface SystemEntry {
   id: string;
   content: string;
-  type: 'info' | 'error';
 }
 
 export default function Chat({ provider, model, onModelChange }: Props) {
-  const outletCtx = useOutletContext<{ selectedProject?: string | null; setSelectedProject?: (id: string | null) => void; activePromptId?: string | null; setActivePromptId?: (id: string | null) => void; onPromptUpdated?: () => void } | null>()
+  const outletCtx = useOutletContext<{ selectedProject?: string | null; setSelectedProject?: (id: string | null) => void; activePromptId?: string | null; setActivePromptId?: (id: string | null) => void; onPromptUpdated?: () => void; promptPreviewLines?: number } | null>()
   const selectedProject = outletCtx?.selectedProject ?? null
   const activePromptId = outletCtx?.activePromptId ?? null
   const setActivePromptId = outletCtx?.setActivePromptId
   const onPromptUpdated = outletCtx?.onPromptUpdated
+  const promptPreviewLines = outletCtx?.promptPreviewLines ?? 3
 
   // Prompt cards state
   const [prompts, setPrompts] = useState<Prompt[]>([])
@@ -57,6 +59,8 @@ export default function Chat({ provider, model, onModelChange }: Props) {
   const [showSnippetSelector, setShowSnippetSelector] = useState(false)
   const [pendingSnippetContent, setPendingSnippetContent] = useState<string | null>(null)
 
+  const draftPromptId = useRef<string | null>(null)
+  const { showError } = useError()
   const chatInputRef = useRef<ChatInputHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -107,12 +111,11 @@ export default function Chat({ provider, model, onModelChange }: Props) {
     }, 200)
   }
 
-  // ── System log helper ──────────────────────────────────────────────
-  const pushSystemEntry = useCallback((content: string, type: 'info' | 'error' = 'info') => {
+  // ── System log helper (info messages only) ─────────────────────────
+  const pushSystemEntry = useCallback((content: string) => {
     setSystemLog(prev => [...prev, {
       id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       content,
-      type,
     }])
   }, [])
 
@@ -133,26 +136,58 @@ export default function Chat({ provider, model, onModelChange }: Props) {
       })
       setPrompts(prev => [...prev, prompt])
     } catch (err) {
-      pushSystemEntry(err instanceof Error ? err.message : 'Failed to create prompt', 'error')
+      showError(err instanceof Error ? err.message : 'Failed to create prompt')
     }
-  }, [selectedProject, prompts.length, pushSystemEntry])
+  }, [selectedProject, prompts.length, showError])
+
+  // Close prompt editor — delete empty drafts created via /new
+  const closePromptEditor = useCallback(() => {
+    const closingId = activePromptId
+    if (closingId && draftPromptId.current === closingId) {
+      const current = prompts.find(p => p.id === closingId)
+      if (current && !current.body?.trim()) {
+        // Empty draft — remove from state and delete from backend
+        setPrompts(prev => prev.filter(p => p.id !== closingId))
+        promptsApi.delete(closingId).catch(() => {})
+      }
+      draftPromptId.current = null
+    }
+    setActivePromptId?.(null)
+  }, [activePromptId, prompts, setActivePromptId])
 
   // ── Slash command execution ────────────────────────────────────────
   const handleSlashExecute = useCallback((command: string) => {
-    const cmd = command.trim().toLowerCase()
+    const trimmed = command.trim()
+    const spaceIdx = trimmed.indexOf(' ')
+    const cmd = (spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx)).toLowerCase()
+    const args = spaceIdx === -1 ? '' : trimmed.slice(spaceIdx + 1).trim()
 
     switch (cmd) {
       case '/new':
         if (!selectedProject) {
-          pushSystemEntry('Select a project first', 'error')
+          showError('Select a project first')
+        } else if (args) {
+          createDraftPrompt(args)
         } else {
-          createDraftPrompt('Untitled prompt')
+          // Open editor with an empty draft — deleted on close if still empty
+          promptsApi.create({
+            project_id: selectedProject,
+            title: '',
+            body: '',
+            order_index: prompts.length,
+          }).then(p => {
+            draftPromptId.current = p.id
+            setPrompts(prev => [...prev, p])
+            setActivePromptId?.(p.id)
+          }).catch(err => {
+            showError(err instanceof Error ? err.message : 'Failed to create prompt')
+          })
         }
         break
 
       case '/snippet':
         if (!activePromptId) {
-          pushSystemEntry('Select a prompt first to insert a snippet', 'error')
+          showError('Select a prompt first to insert a snippet')
         } else {
           setShowSnippetSelector(true)
         }
@@ -164,7 +199,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
 
       case '/refine':
         if (prompts.length === 0) {
-          pushSystemEntry('No prompts to refine', 'error')
+          showError('No prompts to refine')
         } else {
           setShowRefineSelector(true)
         }
@@ -174,14 +209,14 @@ export default function Chat({ provider, model, onModelChange }: Props) {
         if (selectedProject) {
           setShowHistory(true)
         } else {
-          pushSystemEntry('Select a project first', 'error')
+          showError('Select a project first')
         }
         break
 
       default:
-        pushSystemEntry(`Unknown command: ${command}`, 'error')
+        showError(`Unknown command: ${command}`)
     }
-  }, [selectedProject, provider, model, prompts, pushSystemEntry, createDraftPrompt])
+  }, [selectedProject, provider, model, prompts, createDraftPrompt, showError])
 
   // ── Unified send handler ───────────────────────────────────────────
   const handleSend = useCallback((text: string) => {
@@ -212,7 +247,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
           setRefineDiff({ promptId: res.prompt_id, original: res.original, refined: res.refined })
         })
         .catch(err => {
-          pushSystemEntry(err instanceof Error ? err.message : 'Refine failed', 'error')
+          showError(err instanceof Error ? err.message : 'Refine failed')
         })
         .finally(() => setRefineLoading(false))
     }
@@ -228,7 +263,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
       handlePromptUpdate(updated)
       pushSystemEntry('Prompt refined')
     } catch (err) {
-      pushSystemEntry(err instanceof Error ? err.message : 'Failed to save refinement', 'error')
+      showError(err instanceof Error ? err.message : 'Failed to save refinement')
     }
     setRefineDiff(null)
   }
@@ -248,7 +283,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
       setPendingSnippetContent(snippet.content)
       pushSystemEntry(`Inserted snippet "${snippet.name}"`)
     } else {
-      pushSystemEntry('Select a prompt first to insert a snippet', 'error')
+      showError('Select a prompt first to insert a snippet')
     }
   }
 
@@ -277,7 +312,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
             <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-text-muted text-sm mb-2">Prompt not found.</div>
               <button
-                onClick={() => setActivePromptId?.(null)}
+                onClick={closePromptEditor}
                 className="text-xs font-mono text-accent hover:underline"
               >
                 Show all prompts
@@ -287,13 +322,29 @@ export default function Chat({ provider, model, onModelChange }: Props) {
         }
         return (
           <div className="flex-1 flex flex-col overflow-hidden p-4 gap-3">
-            <div className="flex items-center gap-2 shrink-0">
+            <div
+              className="flex items-center gap-3 shrink-0"
+              style={{ height: '48px', borderBottom: '1px solid var(--color-border)', margin: '-16px -16px 0', padding: '0 16px' }}
+            >
               <button
-                onClick={() => setActivePromptId?.(null)}
-                className="text-[10px] font-mono text-text-muted hover:text-accent transition-colors"
+                onClick={closePromptEditor}
+                style={{
+                  fontSize: '16px', color: 'var(--color-text-muted)', background: 'none',
+                  border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 2px',
+                  flexShrink: 0,
+                }}
+                title="Back to all prompts"
               >
-                ← All prompts
+                &#x2190;
               </button>
+              <span
+                style={{
+                  fontSize: '13px', fontFamily: 'var(--font-mono)', fontWeight: 600,
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                Prompt Editor
+              </span>
             </div>
             <div className="flex-1 overflow-hidden">
               <PromptCard
@@ -302,7 +353,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
                 agents={agents}
                 onUpdate={(p) => { handlePromptUpdate(p); setRefiningPromptId(null) }}
                 onNavigateHistory={() => setShowHistory(true)}
-                onClose={() => setActivePromptId?.(null)}
+                onClose={closePromptEditor}
                 autoRefine={refiningPromptId === activePrompt.id}
                 onRefineDismiss={() => setRefiningPromptId(null)}
                 onInsertSnippet={() => setShowSnippetSelector(true)}
@@ -323,7 +374,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
 
-            {/* System log */}
+            {/* System log (info messages only) */}
             {systemLog.length > 0 && (
               <div className="space-y-1.5 mb-2">
                 {systemLog.map(entry => (
@@ -331,9 +382,9 @@ export default function Chat({ provider, model, onModelChange }: Props) {
                     key={entry.id}
                     className="px-3 py-2 rounded text-xs font-mono leading-relaxed whitespace-pre-wrap"
                     style={{
-                      background: entry.type === 'error' ? 'rgba(239, 68, 68, 0.06)' : 'var(--color-surface-1)',
-                      border: `1px solid ${entry.type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'var(--color-border)'}`,
-                      color: entry.type === 'error' ? 'var(--color-danger)' : 'var(--color-text-secondary)',
+                      background: 'var(--color-surface-1)',
+                      border: '1px solid var(--color-border)',
+                      color: 'var(--color-text-secondary)',
                     }}
                   >
                     {entry.content}
@@ -398,6 +449,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
                         onNavigateHistory={() => setShowHistory(true)}
                         autoRefine={refiningPromptId === prompt.id}
                         onRefineDismiss={() => setRefiningPromptId(null)}
+                        previewLines={promptPreviewLines}
                       />
                     </div>
                   ))
@@ -448,6 +500,8 @@ export default function Chat({ provider, model, onModelChange }: Props) {
             onDismiss={() => setShowSnippetSelector(false)}
           />
         )}
+
+        <ErrorContainer />
 
         <ChatInput
           ref={chatInputRef}

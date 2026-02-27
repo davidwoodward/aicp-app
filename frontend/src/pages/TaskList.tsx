@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { prompts as api, agents as agentsApi, type Prompt, type Agent } from '../api'
+import { useError } from '../hooks/useError'
 
 interface Props {
   projectId: string
@@ -8,10 +9,10 @@ interface Props {
 }
 
 export default function TaskList({ projectId, prompts, setPrompts }: Props) {
+  const { showError } = useError()
   const [agentList, setAgentList] = useState<Agent[]>([])
   const [selectedAgent, setSelectedAgent] = useState('')
   const [executing, setExecuting] = useState<string | null>(null)
-  const [error, setError] = useState('')
   const dragItem = useRef<number | null>(null)
   const dragOverItem = useRef<number | null>(null)
 
@@ -51,14 +52,13 @@ export default function TaskList({ projectId, prompts, setPrompts }: Props) {
       await api.reorder(projectId, reordered.map((p) => p.id))
     } catch (err: unknown) {
       setPrompts(snapshot)
-      setError(err instanceof Error ? err.message : 'Failed to reorder')
+      showError(err instanceof Error ? err.message : 'Failed to reorder')
     }
   }
 
   async function handleExecute(promptId: string) {
     if (!selectedAgent) return
     setExecuting(promptId)
-    setError('')
 
     // Optimistic: mark as 'sent' immediately
     const snapshot = prompts.find(p => p.id === promptId)
@@ -73,7 +73,7 @@ export default function TaskList({ projectId, prompts, setPrompts }: Props) {
       if (snapshot) {
         setPrompts(prev => prev.map(p => p.id === promptId ? snapshot : p))
       }
-      setError(err instanceof Error ? err.message : 'Failed to execute')
+      showError(err instanceof Error ? err.message : 'Failed to execute')
     } finally {
       setExecuting(null)
     }
@@ -106,12 +106,6 @@ export default function TaskList({ projectId, prompts, setPrompts }: Props) {
           )}
         </div>
       </div>
-
-      {error && (
-        <div className="mb-3 px-3 py-2 text-xs font-mono bg-danger/10 text-danger border border-danger/20 rounded">
-          {error}
-        </div>
-      )}
 
       {readyPrompts.length === 0 ? (
         <div className="text-center py-10 text-text-muted text-sm">
