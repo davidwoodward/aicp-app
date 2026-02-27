@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { projects as projectsApi, conversations as convsApi } from '../api'
-import type { Project, Conversation } from '../api'
+import { projects as projectsApi } from '../api'
+import type { Project } from '../api'
 
 interface Props {
   onClose: () => void
@@ -11,12 +11,11 @@ interface ResultItem {
   id: string
   label: string
   description?: string
-  group: 'command' | 'project' | 'conversation'
+  group: 'command' | 'project'
   action: () => void
 }
 
 const STATIC_COMMANDS: Omit<ResultItem, 'action'>[] = [
-  { id: 'cmd-new-chat',      label: 'New conversation',   description: 'Start a fresh chat',        group: 'command' },
   { id: 'cmd-projects',      label: 'View projects',      description: 'Open project list',          group: 'command' },
   { id: 'cmd-new-project',   label: 'New project',        description: 'Create a project',           group: 'command' },
 ]
@@ -24,7 +23,6 @@ const STATIC_COMMANDS: Omit<ResultItem, 'action'>[] = [
 const GROUP_LABEL: Record<ResultItem['group'], string> = {
   command:      'Commands',
   project:      'Projects',
-  conversation: 'Conversations',
 }
 
 export default function CmdKPalette({ onClose }: Props) {
@@ -34,14 +32,12 @@ export default function CmdKPalette({ onClose }: Props) {
 
   const [query, setQuery] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
-  const [convs, setConvs] = useState<Conversation[]>([])
   const [selectedIdx, setSelectedIdx] = useState(0)
 
   // Focus input on mount, load data
   useEffect(() => {
     inputRef.current?.focus()
     projectsApi.list().then(setProjects).catch(() => {})
-    convsApi.list().then(setConvs).catch(() => {})
   }, [])
 
   const buildResults = useCallback((): ResultItem[] => {
@@ -52,8 +48,7 @@ export default function CmdKPalette({ onClose }: Props) {
       .map(c => ({
         ...c,
         action: () => {
-          if (c.id === 'cmd-new-chat') navigate('/')
-          else if (c.id === 'cmd-projects') navigate('/projects')
+          if (c.id === 'cmd-projects') navigate('/projects')
           else if (c.id === 'cmd-new-project') navigate('/projects')
           onClose()
         },
@@ -70,19 +65,8 @@ export default function CmdKPalette({ onClose }: Props) {
         action: () => { navigate(`/projects/${p.id}/prompts`); onClose() },
       }))
 
-    const convItems: ResultItem[] = convs
-      .filter(c => !q || c.title.toLowerCase().includes(q) || c.provider.toLowerCase().includes(q))
-      .slice(0, 5)
-      .map(c => ({
-        id: `conv-${c.id}`,
-        label: c.title,
-        description: `${c.provider} · ${c.model.split('/').pop()}`,
-        group: 'conversation' as const,
-        action: () => { navigate(`/c/${c.id}`); onClose() },
-      }))
-
-    return [...commands, ...projectItems, ...convItems]
-  }, [query, projects, convs, navigate, onClose])
+    return [...commands, ...projectItems]
+  }, [query, projects, navigate, onClose])
 
   const results = buildResults()
 
@@ -110,7 +94,7 @@ export default function CmdKPalette({ onClose }: Props) {
   }
 
   // Group results for rendering
-  const groupedOrder: ResultItem['group'][] = ['command', 'project', 'conversation']
+  const groupedOrder: ResultItem['group'][] = ['command', 'project']
   const grouped = groupedOrder
     .map(g => ({ group: g, items: results.filter(r => r.group === g) }))
     .filter(g => g.items.length > 0)
@@ -148,7 +132,7 @@ export default function CmdKPalette({ onClose }: Props) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search commands, projects, conversations…"
+            placeholder="Search commands, projects…"
             style={{
               flex: 1,
               background: 'none',
@@ -223,7 +207,7 @@ export default function CmdKPalette({ onClose }: Props) {
                       >
                         {/* Group icon */}
                         <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', flexShrink: 0, width: '16px', textAlign: 'center' }}>
-                          {group === 'command' ? '›' : group === 'project' ? '◫' : '◎'}
+                          {group === 'command' ? '›' : '◫'}
                         </span>
 
                         <span

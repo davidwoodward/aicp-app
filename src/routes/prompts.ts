@@ -3,10 +3,13 @@ import {
   createPrompt,
   getPrompt,
   listPromptsByProject,
+  listDeletedPromptsByProject,
   updatePrompt,
   updatePromptStatus,
   assignAgent,
   deletePrompt,
+  restorePrompt,
+  hardDeletePrompt,
   PromptStatus,
 } from "../firestore/prompts";
 import { createSession } from "../firestore/sessions";
@@ -16,6 +19,8 @@ import { logActivity } from "../middleware/activityLogger";
 import { trackExecutionStarted } from "../telemetry/telemetryService";
 import { loadLLMConfig, isValidProvider, ProviderName } from "../llm/config";
 import { createProvider } from "../llm/index";
+import { getSetting } from "../firestore/settings";
+import { DEFAULT_REFINE_SYSTEM_PROMPT } from "./settings";
 
 const VALID_STATUSES: PromptStatus[] = ["draft", "ready", "sent", "done"];
 
@@ -196,6 +201,68 @@ export function registerPromptRoutes(app: FastifyInstance) {
     return listPromptsByProject(project_id);
   });
 
+  app.get("/prompts/deleted", async (req, reply) => {
+    const { project_id } = req.query as { project_id?: string };
+
+    if (!project_id) {
+      return reply.status(400).send({ error: "project_id query parameter is required" });
+    }
+
+    return listDeletedPromptsByProject(project_id);
+  });
+
+  app.post("/prompts/:id/restore", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const existing = await getPrompt(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "prompt not found" });
+    }
+    if (!existing.deleted_at) {
+      return reply.status(400).send({ error: "prompt is not deleted" });
+    }
+
+    await restorePrompt(id);
+
+    const restored = await getPrompt(id);
+
+    await logActivity({
+      project_id: existing.project_id,
+      entity_type: "prompt",
+      entity_id: id,
+      action_type: "restored",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: restored as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
+    return restored;
+  });
+
+  app.post("/prompts/:id/permanent-delete", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const existing = await getPrompt(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "prompt not found" });
+    }
+    if (!existing.deleted_at) {
+      return reply.status(400).send({ error: "prompt must be archived before permanent deletion" });
+    }
+
+    await hardDeletePrompt(id);
+
+    await logActivity({
+      project_id: existing.project_id,
+      entity_type: "prompt",
+      entity_id: id,
+      action_type: "delete",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null, permanent: true },
+      actor: "user",
+    });
+
+    return reply.status(204).send();
+  });
+
   app.patch("/prompts/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = req.body as Record<string, unknown>;
@@ -271,12 +338,14 @@ export function registerPromptRoutes(app: FastifyInstance) {
 
     await deletePrompt(id);
 
+    const afterState = await getPrompt(id);
+
     await logActivity({
       project_id: existing.project_id,
       entity_type: "prompt",
       entity_id: id,
       action_type: "delete",
-      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null },
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: afterState as unknown as Record<string, unknown> },
       actor: "user",
     });
 
@@ -306,17 +375,25 @@ export function registerPromptRoutes(app: FastifyInstance) {
     const model = typeof body?.model === "string" ? body.model : providerConfig.model;
     const provider = createProvider(providerName, { ...providerConfig, model });
 
+    const refineSettings = await getSetting("refine");
+    const systemPrompt =
+      (refineSettings?.system_prompt as string) ||
+      DEFAULT_REFINE_SYSTEM_PROMPT;
+
     const messages = [
       {
         role: "system" as const,
-        content:
-          "You are a prompt refinement assistant. Given a prompt, produce a clearer, more precise, and more effective version. Return ONLY the refined prompt text. No explanations, no preamble, no markdown formatting.",
+        content: systemPrompt,
       },
       {
         role: "user" as const,
         content: prompt.body,
       },
     ];
+
+    console.log(`[refine] provider=${providerName} model=${model}`);
+    console.log(`[refine] system_prompt:`, systemPrompt);
+    console.log(`[refine] user_content:`, prompt.body);
 
     let refined = "";
     for await (const event of provider.stream(messages)) {

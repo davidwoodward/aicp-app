@@ -6,19 +6,20 @@ export interface Snippet {
   id: string;
   name: string;
   content: string;
-  collection_id: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export async function createSnippet(
-  data: Omit<Snippet, "id" | "created_at" | "updated_at">
+  data: Omit<Snippet, "id" | "created_at" | "updated_at" | "deleted_at">
 ): Promise<Snippet> {
   const doc = collection.doc();
   const now = new Date().toISOString();
   const snippet: Snippet = {
     id: doc.id,
     ...data,
+    deleted_at: null,
     created_at: now,
     updated_at: now,
   };
@@ -32,24 +33,37 @@ export async function getSnippet(id: string): Promise<Snippet | null> {
   return doc.data() as Snippet;
 }
 
-export async function listSnippets(collectionId?: string): Promise<Snippet[]> {
-  let query = collection.orderBy("updated_at", "desc") as FirebaseFirestore.Query;
-  if (collectionId) {
-    query = collection
-      .where("collection_id", "==", collectionId)
-      .orderBy("updated_at", "desc");
-  }
-  const snapshot = await query.get();
+export async function listSnippets(): Promise<Snippet[]> {
+  const snapshot = await collection
+    .where("deleted_at", "==", null)
+    .orderBy("updated_at", "desc")
+    .get();
+  return snapshot.docs.map((doc) => doc.data() as Snippet);
+}
+
+export async function listDeletedSnippets(): Promise<Snippet[]> {
+  const snapshot = await collection
+    .where("deleted_at", "!=", null)
+    .orderBy("deleted_at", "desc")
+    .get();
   return snapshot.docs.map((doc) => doc.data() as Snippet);
 }
 
 export async function updateSnippet(
   id: string,
-  data: Partial<Pick<Snippet, "name" | "content" | "collection_id">>
+  data: Partial<Pick<Snippet, "name" | "content">>
 ): Promise<void> {
   await collection.doc(id).update({ ...data, updated_at: new Date().toISOString() });
 }
 
-export async function deleteSnippet(id: string): Promise<void> {
+export async function softDeleteSnippet(id: string): Promise<void> {
+  await collection.doc(id).update({ deleted_at: new Date().toISOString() });
+}
+
+export async function restoreSnippet(id: string): Promise<void> {
+  await collection.doc(id).update({ deleted_at: null, updated_at: new Date().toISOString() });
+}
+
+export async function hardDeleteSnippet(id: string): Promise<void> {
   await collection.doc(id).delete();
 }

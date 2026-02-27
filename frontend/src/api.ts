@@ -1,8 +1,10 @@
 const BASE = '/api';
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (opts?.body) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...opts,
   });
   if (res.status === 204) return undefined as T;
@@ -42,6 +44,7 @@ export interface Prompt {
   created_at: string;
   sent_at: string | null;
   done_at: string | null;
+  deleted_at: string | null;
 }
 
 export interface Agent {
@@ -105,7 +108,7 @@ export interface Snippet {
   id: string;
   name: string;
   content: string;
-  collection_id: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -114,6 +117,8 @@ export interface SnippetCollection {
   id: string;
   name: string;
   description: string;
+  snippet_ids: string[];
+  deleted_at: string | null;
   created_at: string;
 }
 
@@ -164,12 +169,15 @@ export const projects = {
   listDeleted: () => request<Project[]>('/projects/deleted'),
   restore: (id: string) =>
     request<Project>(`/projects/${id}/restore`, { method: 'POST' }),
+  permanentDelete: (id: string) =>
+    request<void>(`/projects/${id}/permanent-delete`, { method: 'POST' }),
 };
 
 // --- Prompts ---
 
 export const prompts = {
   list: (projectId: string) => request<Prompt[]>(`/prompts?project_id=${projectId}`),
+  listDeleted: (projectId: string) => request<Prompt[]>(`/prompts/deleted?project_id=${projectId}`),
   create: (data: {
     project_id: string;
     title: string;
@@ -181,6 +189,10 @@ export const prompts = {
     request<Prompt>(`/prompts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/prompts/${id}`, { method: 'DELETE' }),
+  restore: (id: string) =>
+    request<Prompt>(`/prompts/${id}/restore`, { method: 'POST' }),
+  permanentDelete: (id: string) =>
+    request<void>(`/prompts/${id}/permanent-delete`, { method: 'POST' }),
   reorder: (projectId: string, promptIds: string[]) =>
     request<{ reordered: number }>('/prompts/reorder', {
       method: 'PATCH',
@@ -245,23 +257,34 @@ export const models = {
 // --- Snippets ---
 
 export const snippets = {
-  list: (collectionId?: string) =>
-    request<Snippet[]>(collectionId ? `/snippets?collection_id=${collectionId}` : '/snippets'),
+  list: () => request<Snippet[]>('/snippets'),
   get: (id: string) => request<Snippet>(`/snippets/${id}`),
-  create: (data: { name: string; content: string; collection_id?: string | null }) =>
+  create: (data: { name: string; content: string }) =>
     request<Snippet>('/snippets', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<Pick<Snippet, 'name' | 'content' | 'collection_id'>>) =>
+  update: (id: string, data: Partial<Pick<Snippet, 'name' | 'content'>>) =>
     request<Snippet>(`/snippets/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/snippets/${id}`, { method: 'DELETE' }),
+  listDeleted: () => request<Snippet[]>('/snippets/deleted'),
+  restore: (id: string) =>
+    request<Snippet>(`/snippets/${id}/restore`, { method: 'POST' }),
+  permanentDelete: (id: string) =>
+    request<void>(`/snippets/${id}/permanent-delete`, { method: 'POST' }),
 };
 
 export const snippetCollections = {
   list: () => request<SnippetCollection[]>('/snippet-collections'),
   create: (data: { name: string; description?: string }) =>
     request<SnippetCollection>('/snippet-collections', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Pick<SnippetCollection, 'name' | 'description' | 'snippet_ids'>>) =>
+    request<SnippetCollection>(`/snippet-collections/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/snippet-collections/${id}`, { method: 'DELETE' }),
+  listDeleted: () => request<SnippetCollection[]>('/snippet-collections/deleted'),
+  restore: (id: string) =>
+    request<SnippetCollection>(`/snippet-collections/${id}/restore`, { method: 'POST' }),
+  permanentDelete: (id: string) =>
+    request<void>(`/snippet-collections/${id}/permanent-delete`, { method: 'POST' }),
 };
 
 // --- Activity Logs ---
@@ -397,6 +420,17 @@ export const compositions = {
       body: JSON.stringify({ prompt_id: promptId, snippet_order: snippetOrder }),
     }),
 };
+
+// --- Settings ---
+
+export type RefineMode = 'Manual' | 'Auto'
+export interface RefineSettings { mode: RefineMode; system_prompt: string }
+
+export const settings = {
+  getRefine: () => request<RefineSettings>('/settings/refine'),
+  updateRefine: (data: Partial<RefineSettings>) =>
+    request<RefineSettings>('/settings/refine', { method: 'PATCH', body: JSON.stringify(data) }),
+}
 
 // --- Chat SSE ---
 

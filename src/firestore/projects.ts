@@ -54,3 +54,7 @@ export async function softDeleteProject(id: string): Promise<void> {
 export async function restoreProject(id: string): Promise<void> {
   await collection.doc(id).update({ deleted_at: null });
 }
+
+export async function hardDeleteProject(id: string): Promise<void> {
+  await collection.doc(id).delete();
+}

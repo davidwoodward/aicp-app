@@ -16,10 +16,11 @@ export interface Prompt {
   created_at: string;
   sent_at: string | null;
   done_at: string | null;
+  deleted_at: string | null;
 }
 
 export async function createPrompt(
-  data: Omit<Prompt, "id" | "created_at" | "sent_at" | "done_at" | "status" | "agent_id">
+  data: Omit<Prompt, "id" | "created_at" | "sent_at" | "done_at" | "deleted_at" | "status" | "agent_id">
 ): Promise<Prompt> {
   const doc = collection.doc();
   const prompt: Prompt = {
@@ -30,6 +31,7 @@ export async function createPrompt(
     created_at: new Date().toISOString(),
     sent_at: null,
     done_at: null,
+    deleted_at: null,
   };
   await doc.set(prompt);
   return prompt;
@@ -42,6 +44,26 @@ export async function getPrompt(id: string): Promise<Prompt | null> {
 }
 
 export async function listPromptsByProject(projectId: string): Promise<Prompt[]> {
+  const snapshot = await collection
+    .where("project_id", "==", projectId)
+    .orderBy("order_index", "asc")
+    .get();
+  return snapshot.docs
+    .map((doc) => doc.data() as Prompt)
+    .filter((p) => !p.deleted_at);
+}
+
+export async function listDeletedPromptsByProject(projectId: string): Promise<Prompt[]> {
+  const snapshot = await collection
+    .where("project_id", "==", projectId)
+    .get();
+  return snapshot.docs
+    .map((doc) => doc.data() as Prompt)
+    .filter((p) => !!p.deleted_at)
+    .sort((a, b) => b.deleted_at!.localeCompare(a.deleted_at!));
+}
+
+export async function listAllPromptsByProject(projectId: string): Promise<Prompt[]> {
   const snapshot = await collection
     .where("project_id", "==", projectId)
     .orderBy("order_index", "asc")
@@ -68,5 +90,13 @@ export async function assignAgent(id: string, agentId: string): Promise<void> {
 }
 
 export async function deletePrompt(id: string): Promise<void> {
+  await collection.doc(id).update({ deleted_at: new Date().toISOString() });
+}
+
+export async function restorePrompt(id: string): Promise<void> {
+  await collection.doc(id).update({ deleted_at: null });
+}
+
+export async function hardDeletePrompt(id: string): Promise<void> {
   await collection.doc(id).delete();
 }

@@ -37,7 +37,6 @@ export default function App() {
       {/* Chat routes — 3-panel shell */}
       <Route element={<AppShell provider={provider} model={model} onModelChange={handleModelChange} />}>
         <Route path="/" element={<Chat provider={provider} model={model} onModelChange={handleModelChange} />} />
-        <Route path="/c/:conversationId" element={<Chat provider={provider} model={model} onModelChange={handleModelChange} />} />
       </Route>
 
       {/* Project routes — classic layout */}

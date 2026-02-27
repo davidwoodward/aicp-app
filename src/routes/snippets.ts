@@ -3,39 +3,49 @@ import {
   createSnippet,
   getSnippet,
   listSnippets,
+  listDeletedSnippets,
   updateSnippet,
-  deleteSnippet,
+  softDeleteSnippet,
+  restoreSnippet,
+  hardDeleteSnippet,
 } from "../firestore/snippets";
 import {
   createSnippetCollection,
   getSnippetCollection,
   listSnippetCollections,
-  deleteSnippetCollection,
+  listDeletedSnippetCollections,
+  updateSnippetCollection,
+  softDeleteSnippetCollection,
+  restoreSnippetCollection,
+  hardDeleteSnippetCollection,
 } from "../firestore/snippet-collections";
 import { logActivity } from "../middleware/activityLogger";
 
 export function registerSnippetRoutes(app: FastifyInstance) {
   // --- Snippets ---
 
-  app.get("/snippets", async (req) => {
-    const { collection_id } = req.query as { collection_id?: string };
-    return listSnippets(collection_id || undefined);
+  // Static routes BEFORE parametric :id routes
+  app.get("/snippets/deleted", async () => {
+    return listDeletedSnippets();
+  });
+
+  app.get("/snippets", async () => {
+    return listSnippets();
   });
 
   app.post("/snippets", async (req, reply) => {
     const body = req.body as Record<string, unknown>;
 
-    if (!body.name || typeof body.name !== "string") {
+    if (typeof body.name !== "string") {
       return reply.status(400).send({ error: "name is required" });
     }
-    if (!body.content || typeof body.content !== "string") {
+    if (typeof body.content !== "string") {
       return reply.status(400).send({ error: "content is required" });
     }
 
     const snippet = await createSnippet({
       name: body.name,
       content: body.content,
-      collection_id: typeof body.collection_id === "string" ? body.collection_id : null,
     });
 
     await logActivity({
@@ -71,9 +81,6 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     const updates: Record<string, unknown> = {};
     if (typeof body.name === "string") updates.name = body.name;
     if (typeof body.content === "string") updates.content = body.content;
-    if (body.collection_id !== undefined) {
-      updates.collection_id = typeof body.collection_id === "string" ? body.collection_id : null;
-    }
 
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ error: "no valid fields to update" });
@@ -94,6 +101,7 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     return afterState;
   });
 
+  // Soft delete
   app.delete("/snippets/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
 
@@ -102,7 +110,60 @@ export function registerSnippetRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "snippet not found" });
     }
 
-    await deleteSnippet(id);
+    await softDeleteSnippet(id);
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet",
+      entity_id: id,
+      action_type: "delete",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null },
+      actor: "user",
+    });
+
+    return reply.status(204).send();
+  });
+
+  // Restore
+  app.post("/snippets/:id/restore", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const existing = await getSnippet(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "snippet not found" });
+    }
+    if (!existing.deleted_at) {
+      return reply.status(400).send({ error: "snippet is not archived" });
+    }
+
+    await restoreSnippet(id);
+    const restored = { ...existing, deleted_at: null, updated_at: new Date().toISOString() };
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet",
+      entity_id: id,
+      action_type: "restored",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: restored as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
+    return restored;
+  });
+
+  // Permanent delete
+  app.post("/snippets/:id/permanent-delete", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const existing = await getSnippet(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "snippet not found" });
+    }
+    if (!existing.deleted_at) {
+      return reply.status(400).send({ error: "snippet must be archived before permanent deletion" });
+    }
+
+    await hardDeleteSnippet(id);
 
     await logActivity({
       project_id: null,
@@ -117,6 +178,11 @@ export function registerSnippetRoutes(app: FastifyInstance) {
   });
 
   // --- Snippet Collections ---
+
+  // Static routes BEFORE parametric :id routes
+  app.get("/snippet-collections/deleted", async () => {
+    return listDeletedSnippetCollections();
+  });
 
   app.get("/snippet-collections", async () => {
     return listSnippetCollections();
@@ -146,6 +212,40 @@ export function registerSnippetRoutes(app: FastifyInstance) {
     return reply.status(201).send(snippetCollection);
   });
 
+  app.patch("/snippet-collections/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as Record<string, unknown>;
+
+    const existing = await getSnippetCollection(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "collection not found" });
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (typeof body.name === "string") updates.name = body.name;
+    if (typeof body.description === "string") updates.description = body.description;
+    if (Array.isArray(body.snippet_ids)) updates.snippet_ids = body.snippet_ids;
+
+    if (Object.keys(updates).length === 0) {
+      return reply.status(400).send({ error: "no valid fields to update" });
+    }
+
+    await updateSnippetCollection(id, updates);
+    const afterState = { ...existing, ...updates };
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet_collection",
+      entity_id: id,
+      action_type: "update",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: afterState as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
+    return afterState;
+  });
+
+  // Soft delete
   app.delete("/snippet-collections/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
 
@@ -154,7 +254,60 @@ export function registerSnippetRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "collection not found" });
     }
 
-    await deleteSnippetCollection(id);
+    await softDeleteSnippetCollection(id);
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet_collection",
+      entity_id: id,
+      action_type: "delete",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null },
+      actor: "user",
+    });
+
+    return reply.status(204).send();
+  });
+
+  // Restore
+  app.post("/snippet-collections/:id/restore", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const existing = await getSnippetCollection(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "collection not found" });
+    }
+    if (!existing.deleted_at) {
+      return reply.status(400).send({ error: "collection is not archived" });
+    }
+
+    await restoreSnippetCollection(id);
+    const restored = { ...existing, deleted_at: null };
+
+    await logActivity({
+      project_id: null,
+      entity_type: "snippet_collection",
+      entity_id: id,
+      action_type: "restored",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: restored as unknown as Record<string, unknown> },
+      actor: "user",
+    });
+
+    return restored;
+  });
+
+  // Permanent delete
+  app.post("/snippet-collections/:id/permanent-delete", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const existing = await getSnippetCollection(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "collection not found" });
+    }
+    if (!existing.deleted_at) {
+      return reply.status(400).send({ error: "collection must be archived before permanent deletion" });
+    }
+
+    await hardDeleteSnippetCollection(id);
 
     await logActivity({
       project_id: null,

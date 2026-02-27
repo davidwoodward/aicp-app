@@ -18,7 +18,7 @@
 
   --color-accent: #6ee7b7;
   --color-accent-dim: #2d6b54;
-  --color-status-draft: #6b7280;
+  --color-status-draft: #9ca3af;
   --color-status-ready: #f59e0b;
   --color-status-sent: #3b82f6;
   --color-status-done: #6ee7b7;
@@ -64,6 +64,8 @@ body {
   font-family: var(--font-sans);
   margin: 0;
 }
+
+button, a, [role="button"] { cursor: pointer; }
 
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

@@ -1,35 +1,63 @@
 import { useState, useEffect } from 'react'
 import {
-  sessions as sessionsApi,
+  activityLogs,
   messages as messagesApi,
-  type Session,
+  type ActivityLog,
   type Message,
   type Agent,
 } from '../api'
 
 interface Props {
+  promptId: string
   projectId: string
   agents: Agent[]
-  onDismiss: () => void
 }
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString()
 }
 
-function duration(start: string, end: string | null): string {
-  if (!end) return 'active'
-  const ms = new Date(end).getTime() - new Date(start).getTime()
-  const secs = Math.floor(ms / 1000)
-  if (secs < 60) return `${secs}s`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ${secs % 60}s`
-  const hrs = Math.floor(mins / 60)
-  return `${hrs}h ${mins % 60}m`
+function actionLabel(log: ActivityLog, agentMap: Map<string, Agent>): string {
+  switch (log.action_type) {
+    case 'execute': {
+      const agentId = log.metadata?.agent_id as string | undefined
+      const agent = agentId ? agentMap.get(agentId) : undefined
+      const name = agent?.machine_name ?? agentId?.slice(0, 12) ?? 'unknown'
+      return `Executed on ${name}`
+    }
+    case 'status_change': {
+      const from = (log.metadata?.before_state as Record<string, unknown>)?.status as string | undefined
+      const to = (log.metadata?.after_state as Record<string, unknown>)?.status as string | undefined
+      if (from && to) return `Status: ${from} → ${to}`
+      return 'Status changed'
+    }
+    case 'update':
+      return 'Updated'
+    case 'create':
+      return 'Created'
+    case 'delete':
+      return 'Deleted'
+    case 'restored':
+      return 'Restored'
+    default:
+      return log.action_type
+  }
 }
 
-export default function SessionsPanel({ projectId, agents, onDismiss }: Props) {
-  const [sessions, setSessions] = useState<Session[]>([])
+function actionIcon(action: string): string {
+  switch (action) {
+    case 'execute': return '▸'
+    case 'status_change': return '◆'
+    case 'update': return '✎'
+    case 'create': return '+'
+    case 'delete': return '×'
+    case 'restored': return '↺'
+    default: return '·'
+  }
+}
+
+export default function PromptExecutionHistory({ promptId, projectId, agents }: Props) {
+  const [logs, setLogs] = useState<ActivityLog[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -38,23 +66,28 @@ export default function SessionsPanel({ projectId, agents, onDismiss }: Props) {
   const agentMap = new Map(agents.map(a => [a.id, a]))
 
   useEffect(() => {
-    sessionsApi.listByProject(projectId)
-      .then(list => setSessions(list.sort((a, b) =>
-        new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
-      )))
-      .catch(() => setSessions([]))
+    setLoading(true)
+    setLogs([])
+    setExpandedId(null)
+    setMessages([])
+    activityLogs.list({ entity_type: 'prompt', entity_id: promptId, project_id: projectId, limit: 20 })
+      .then(res => setLogs(res.logs))
+      .catch(() => setLogs([]))
       .finally(() => setLoading(false))
-  }, [projectId])
+  }, [promptId, projectId])
 
-  function toggleSession(id: string) {
-    if (expandedId === id) {
+  function toggleExpand(log: ActivityLog) {
+    const sessionId = log.metadata?.session_id as string | undefined
+    if (!sessionId) return
+
+    if (expandedId === log.id) {
       setExpandedId(null)
       setMessages([])
       return
     }
-    setExpandedId(id)
+    setExpandedId(log.id)
     setLoadingMsgs(true)
-    messagesApi.listBySession(id)
+    messagesApi.listBySession(sessionId)
       .then(setMessages)
       .catch(() => setMessages([]))
       .finally(() => setLoadingMsgs(false))
@@ -67,7 +100,7 @@ export default function SessionsPanel({ projectId, agents, onDismiss }: Props) {
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-2"
+        className="px-4 py-2"
         style={{ borderBottom: '1px solid var(--color-border)' }}
       >
         <span
@@ -80,14 +113,8 @@ export default function SessionsPanel({ projectId, agents, onDismiss }: Props) {
             color: 'var(--color-accent)',
           }}
         >
-          Sessions
+          Activity
         </span>
-        <button
-          onClick={onDismiss}
-          className="text-[10px] font-mono text-text-muted hover:text-text-primary transition-colors"
-        >
-          close
-        </button>
       </div>
 
       {loading ? (
@@ -98,26 +125,26 @@ export default function SessionsPanel({ projectId, agents, onDismiss }: Props) {
             <span className="dot" />
           </div>
         </div>
-      ) : sessions.length === 0 ? (
+      ) : logs.length === 0 ? (
         <div className="px-4 py-8 text-center text-text-muted text-xs font-mono">
-          No sessions for this project.
+          No activity yet.
         </div>
       ) : (
         <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
-          {sessions.map(session => {
-            const agent = agentMap.get(session.agent_id)
-            const expanded = expandedId === session.id
-            const isActive = !session.ended_at
+          {logs.map(log => {
+            const sessionId = log.metadata?.session_id as string | undefined
+            const canExpand = log.action_type === 'execute' && !!sessionId
+            const expanded = expandedId === log.id
 
             return (
-              <div key={session.id}>
-                {/* Session row */}
+              <div key={log.id}>
                 <button
-                  onClick={() => toggleSession(session.id)}
+                  onClick={() => canExpand && toggleExpand(log)}
                   className="w-full text-left px-4 py-2.5 transition-colors"
                   style={{
                     borderBottom: '1px solid var(--color-border)',
                     background: expanded ? 'rgba(110, 231, 183, 0.04)' : 'transparent',
+                    cursor: canExpand ? 'pointer' : 'default',
                   }}
                 >
                   <div className="flex items-center gap-2">
@@ -128,50 +155,25 @@ export default function SessionsPanel({ projectId, agents, onDismiss }: Props) {
                         fontSize: '10px',
                         transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
                         display: 'inline-block',
+                        opacity: canExpand ? 1 : 0.3,
                       }}
                     >
-                      ▸
+                      {actionIcon(log.action_type)}
                     </span>
 
-                    {/* Status dot */}
-                    <span
-                      style={{
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        background: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
-                        flexShrink: 0,
-                      }}
-                    />
-
-                    {/* Agent name */}
-                    <span className="text-xs font-mono font-medium text-text-primary">
-                      {agent?.machine_name ?? session.agent_id.slice(0, 12)}
+                    {/* Label */}
+                    <span className="text-xs font-mono text-text-secondary flex-1">
+                      {actionLabel(log, agentMap)}
                     </span>
 
-                    {/* Duration */}
-                    <span className="text-[10px] font-mono text-text-muted ml-auto">
-                      {duration(session.started_at, session.ended_at)}
-                    </span>
-                  </div>
-
-                  {/* Timestamps */}
-                  <div className="flex items-center gap-3 mt-1 ml-6">
+                    {/* Timestamp */}
                     <span className="text-[10px] font-mono text-text-muted">
-                      {formatTime(session.started_at)}
+                      {formatTime(log.created_at)}
                     </span>
-                    {session.ended_at && (
-                      <>
-                        <span className="text-[10px] text-text-muted">→</span>
-                        <span className="text-[10px] font-mono text-text-muted">
-                          {formatTime(session.ended_at)}
-                        </span>
-                      </>
-                    )}
                   </div>
                 </button>
 
-                {/* Expanded messages */}
+                {/* Expanded session messages */}
                 {expanded && (
                   <div
                     className="px-4 py-3"
