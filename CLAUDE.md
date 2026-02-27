@@ -76,6 +76,13 @@ npm start            # Run compiled output
 - WebSocket handlers go in `src/websocket/` (routes use `{ websocket: true }`)
 - Fastify handles HTTP and WebSocket on the same port (Cloud Run exposes one port)
 
+## Auto-Generated Names
+
+When auto-generating a name from content (e.g. snippets, prompts), use this algorithm:
+1. Take the first line of the content
+2. If 30 characters or fewer, use the full first line as the name
+3. If longer, find the first word break (space) at or after position 30, and use everything to the left of it
+
 ## Docker
 
 The Dockerfile uses a multi-stage build:
