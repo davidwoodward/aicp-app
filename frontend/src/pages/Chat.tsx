@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import {
   prompts as promptsApi,
   agents as agentsApi,
+  snippets as snippetsApi,
   type Prompt,
   type Agent,
   type Snippet,
@@ -194,7 +195,24 @@ export default function Chat({ provider, model, onModelChange }: Props) {
         break
 
       case '/snippet':
-        if (!activePromptId) {
+        if (args.startsWith('new ')) {
+          const content = args.slice(4).trim()
+          if (!content) {
+            showError('Usage: /snippet new <content>')
+          } else {
+            const firstLine = content.split('\n')[0]
+            let name: string
+            if (firstLine.length <= 30) {
+              name = firstLine
+            } else {
+              const breakIdx = firstLine.indexOf(' ', 30)
+              name = breakIdx === -1 ? firstLine : firstLine.slice(0, breakIdx)
+            }
+            snippetsApi.create({ name, content })
+              .then(() => pushSystemEntry(`Created snippet "${name}"`))
+              .catch(err => showError(err instanceof Error ? err.message : 'Failed to create snippet'))
+          }
+        } else if (!activePromptId) {
           showError('Select a prompt first to insert a snippet')
         } else {
           setShowSnippetSelector(true)

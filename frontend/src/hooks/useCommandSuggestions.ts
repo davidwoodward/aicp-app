@@ -13,7 +13,7 @@ export interface SuggestionState {
 
 const COMMANDS: SuggestionItem[] = [
   { text: '/new',      label: '/new',      description: 'Create a new prompt' },
-  { text: '/snippet',  label: '/snippet',  description: 'Browse and attach snippets' },
+  { text: '/snippet',  label: '/snippet',  description: 'Browse snippets or /snippet new <text>' },
   { text: '/model',    label: '/model',    description: 'Switch model' },
   { text: '/refine',   label: '/refine',   description: 'Refine the latest prompt' },
   { text: '/history',  label: '/history',  description: 'View project history' },
