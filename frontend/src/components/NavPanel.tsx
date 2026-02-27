@@ -1,12 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { projects as projectsApi, prompts as promptsApi, conversations as convsApi } from '../api'
-import type { Project, Prompt, Conversation, PromptMetrics, DayActivity } from '../api'
+import { useNavigate } from 'react-router-dom'
+import { projects as projectsApi, prompts as promptsApi, snippets as snippetsApi, snippetCollections as collectionsApi } from '../api'
+import type { Project, Prompt, Snippet, SnippetCollection, PromptMetrics, DayActivity } from '../api'
 import { useTreeMetrics } from '../hooks/useTreeMetrics'
 import DeleteProjectModal from './DeleteProjectModal'
 
 interface Props {
   onProjectSelect: (projectId: string | null) => void
+  activePromptId?: string | null
+  onPromptSelect?: (promptId: string | null) => void
+  activeSnippetId?: string | null
+  onSnippetSelect?: (id: string | null) => void
+  onOpenSnippetManager?: () => void
+  promptRefreshKey?: number
+  snippetRefreshKey?: number
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -119,10 +126,12 @@ interface PromptNodeProps {
   onReorder: (projectId: string, prompts: Prompt[]) => void
   allProjectPrompts: Prompt[]
   metricsMap: Map<string, PromptMetrics>
+  activePromptId?: string | null
+  onPromptSelect?: (promptId: string | null) => void
+  onEnsureProjectSelected?: (id: string) => void
 }
 
-function PromptNode({ prompt, allPrompts, projectId, depth, onReorder, allProjectPrompts, metricsMap }: PromptNodeProps) {
-  const navigate = useNavigate()
+function PromptNode({ prompt, allPrompts, projectId, depth, onReorder, allProjectPrompts, metricsMap, activePromptId, onPromptSelect, onEnsureProjectSelected }: PromptNodeProps) {
   const [collapsed, setCollapsed] = useState(false)
   const dragOverRef = useRef(false)
 
@@ -169,7 +178,11 @@ function PromptNode({ prompt, allPrompts, projectId, depth, onReorder, allProjec
         onDrop={handleDrop}
         className="flex items-center gap-2 cursor-pointer group"
         style={{ height: '26px', paddingLeft: `${depth * 12}px` }}
-        onClick={() => navigate(`/projects/${projectId}/prompts`)}
+        onClick={() => {
+          const nextPromptId = activePromptId === prompt.id ? null : prompt.id
+          if (nextPromptId) onEnsureProjectSelected?.(projectId)
+          onPromptSelect?.(nextPromptId)
+        }}
       >
         {/* Collapse toggle for nodes with children */}
         {hasChildren ? (
@@ -196,7 +209,7 @@ function PromptNode({ prompt, allPrompts, projectId, depth, onReorder, allProjec
 
         <span
           className="truncate group-hover:text-text-primary transition-colors flex-1"
-          style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', minWidth: 0 }}
+          style={{ fontSize: '11px', color: activePromptId === prompt.id ? 'var(--color-accent)' : 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', minWidth: 0 }}
         >
           {prompt.title}
         </span>
@@ -231,6 +244,9 @@ function PromptNode({ prompt, allPrompts, projectId, depth, onReorder, allProjec
               onReorder={onReorder}
               allProjectPrompts={allProjectPrompts}
               metricsMap={metricsMap}
+              activePromptId={activePromptId}
+              onPromptSelect={onPromptSelect}
+              onEnsureProjectSelected={onEnsureProjectSelected}
             />
           ))}
         </div>
@@ -248,6 +264,9 @@ function ProjectEntry({
   onSelect,
   onReorder,
   onDelete,
+  activePromptId,
+  onPromptSelect,
+  onEnsureProjectSelected,
 }: {
   project: Project
   isExpanded: boolean
@@ -257,6 +276,9 @@ function ProjectEntry({
   onSelect: (id: string) => void
   onReorder: (projectId: string, prompts: Prompt[]) => void
   onDelete: (project: Project) => void
+  activePromptId?: string | null
+  onPromptSelect?: (promptId: string | null) => void
+  onEnsureProjectSelected?: (id: string) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -427,6 +449,9 @@ function ProjectEntry({
                   onReorder={onReorder}
                   allProjectPrompts={projectPrompts}
                   metricsMap={metricsMap}
+                  activePromptId={activePromptId}
+                  onPromptSelect={onPromptSelect}
+                  onEnsureProjectSelected={onEnsureProjectSelected}
                 />
               ))
           )}
@@ -436,20 +461,21 @@ function ProjectEntry({
   )
 }
 
-export default function NavPanel({ onProjectSelect }: Props) {
+export default function NavPanel({ onProjectSelect, activePromptId, onPromptSelect, activeSnippetId, onSnippetSelect, onOpenSnippetManager, promptRefreshKey, snippetRefreshKey }: Props) {
   const navigate = useNavigate()
-  const { conversationId } = useParams<{ conversationId: string }>()
 
   const [projectList, setProjectList] = useState<Project[]>([])
   const [promptMap, setPromptMap] = useState<Map<string, Prompt[]>>(new Map())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [convList, setConvList] = useState<Conversation[]>([])
   const [activeProject, setActiveProject] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
-
+  const [snippetList, setSnippetList] = useState<Snippet[]>([])
+  const [collectionList, setCollectionList] = useState<SnippetCollection[]>([])
+  const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set())
   useEffect(() => {
     projectsApi.list().then(setProjectList).catch(() => {})
-    convsApi.list().then(setConvList).catch(() => {})
+    snippetsApi.list().then(setSnippetList).catch(() => {})
+    collectionsApi.list().then(setCollectionList).catch(() => {})
   }, [])
 
   function loadPrompts(id: string) {
@@ -459,6 +485,22 @@ export default function NavPanel({ onProjectSelect }: Props) {
       }).catch(() => {})
     }
   }
+
+  // Re-fetch prompts for expanded projects when prompted
+  useEffect(() => {
+    if (!promptRefreshKey) return
+    expanded.forEach(id => {
+      promptsApi.list(id).then(ps => {
+        setPromptMap(m => new Map(m).set(id, ps))
+      }).catch(() => {})
+    })
+  }, [promptRefreshKey])
+
+  // Re-fetch snippets when prompted
+  useEffect(() => {
+    if (!snippetRefreshKey) return
+    snippetsApi.list().then(setSnippetList).catch(() => {})
+  }, [snippetRefreshKey])
 
   function toggleProject(id: string) {
     setExpanded(prev => {
@@ -477,6 +519,11 @@ export default function NavPanel({ onProjectSelect }: Props) {
     const next = id === activeProject ? null : id
     setActiveProject(next)
     onProjectSelect(next)
+  }
+
+  function ensureProjectSelected(id: string) {
+    setActiveProject(id)
+    onProjectSelect(id)
   }
 
   async function handleReorder(projectId: string, reordered: Prompt[]) {
@@ -539,52 +586,144 @@ export default function NavPanel({ onProjectSelect }: Props) {
               onSelect={selectProject}
               onReorder={handleReorder}
               onDelete={setDeleteTarget}
+              activePromptId={activePromptId}
+              onPromptSelect={onPromptSelect}
+              onEnsureProjectSelected={ensureProjectSelected}
             />
           ))
         )}
 
-        {/* ── SESSIONS section ─────────────────────────── */}
+        {/* ── SNIPPETS section ─────────────────────── */}
         <SectionLabel>
-          <span>Sessions</span>
-          <button
-            onClick={() => navigate('/')}
-            className="text-text-muted hover:text-accent transition-colors"
-            style={{ fontSize: '14px', lineHeight: 1, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
-            title="New conversation"
-          >
-            +
-          </button>
+          <span>Snippets</span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onOpenSnippetManager?.()}
+              className="text-text-muted hover:text-accent transition-colors"
+              style={{ fontSize: '11px', lineHeight: 1, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontFamily: 'var(--font-mono)' }}
+              title="Manage snippets"
+            >
+              &#x22EF;
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const snippet = await snippetsApi.create({ name: '', content: '' })
+                  setSnippetList(prev => [snippet, ...prev])
+                  onSnippetSelect?.(snippet.id)
+                } catch { /* ignore */ }
+              }}
+              className="text-text-muted hover:text-accent transition-colors"
+              style={{ fontSize: '14px', lineHeight: 1, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
+              title="New snippet"
+            >
+              +
+            </button>
+          </div>
         </SectionLabel>
 
-        {convList.length === 0 ? (
+        {snippetList.length === 0 ? (
           <div className="px-3 py-2" style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-            No conversations
+            No snippets yet
           </div>
         ) : (
-          convList.slice(0, 20).map(conv => (
+          snippetList.map(snippet => (
             <div
-              key={conv.id}
+              key={snippet.id}
               className="flex items-center gap-2 px-3 cursor-pointer group"
-              style={{ height: '28px' }}
-              onClick={() => navigate(`/c/${conv.id}`)}
+              style={{ height: '26px' }}
+              onClick={() => onSnippetSelect?.(activeSnippetId === snippet.id ? null : snippet.id)}
             >
-              <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', flexShrink: 0 }}>
-                ◎
+              <span style={{ fontSize: '10px', color: activeSnippetId === snippet.id ? 'var(--color-accent)' : 'var(--color-text-muted)', flexShrink: 0, transition: 'color 0.15s' }}>
+                ◇
               </span>
               <span
                 className="truncate group-hover:text-text-primary transition-colors"
-                style={{
-                  fontSize: '11px',
-                  color: conversationId === conv.id ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                  fontFamily: 'var(--font-mono)',
-                  flex: 1,
-                  minWidth: 0,
-                }}
+                style={{ fontSize: '11px', color: activeSnippetId === snippet.id ? 'var(--color-accent)' : 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0 }}
               >
-                {conv.title}
+                {snippet.name}
               </span>
             </div>
           ))
+        )}
+
+        {/* ── COLLECTIONS subsection ─────────────────────── */}
+        {collectionList.length > 0 && (
+          <>
+            <SectionLabel>
+              <span>Collections</span>
+            </SectionLabel>
+            {collectionList.map(col => {
+              const isColExpanded = expandedCollections.has(col.id)
+              const snippetMap = new Map(snippetList.map(s => [s.id, s]))
+              return (
+                <div key={col.id}>
+                  <div
+                    className="flex items-center gap-2 px-3 cursor-pointer group"
+                    style={{ height: '26px' }}
+                    onClick={() => setExpandedCollections(prev => {
+                      const next = new Set(prev)
+                      if (next.has(col.id)) next.delete(col.id)
+                      else next.add(col.id)
+                      return next
+                    })}
+                  >
+                    <span
+                      style={{
+                        fontSize: '7px', color: 'var(--color-text-muted)',
+                        transform: isColExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.15s ease',
+                        display: 'inline-block', width: '8px', flexShrink: 0,
+                      }}
+                    >
+                      ▶
+                    </span>
+                    <span
+                      className="truncate group-hover:text-text-primary transition-colors"
+                      style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0 }}
+                    >
+                      {col.name}
+                    </span>
+                    <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                      {col.snippet_ids.length}
+                    </span>
+                  </div>
+                  {isColExpanded && (
+                    <div style={{ marginLeft: '20px', paddingLeft: '8px', borderLeft: '1px solid var(--color-border)' }}>
+                      {col.snippet_ids.length === 0 ? (
+                        <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', padding: '2px 0' }}>
+                          empty
+                        </div>
+                      ) : (
+                        col.snippet_ids.map(sid => {
+                          const s = snippetMap.get(sid)
+                          if (!s) return null
+                          return (
+                            <div
+                              key={sid}
+                              className="flex items-center gap-2 cursor-pointer group"
+                              style={{ height: '24px' }}
+                              onClick={() => onSnippetSelect?.(activeSnippetId === sid ? null : sid)}
+                            >
+                              <span style={{ fontSize: '10px', color: activeSnippetId === sid ? 'var(--color-accent)' : 'var(--color-text-muted)', flexShrink: 0, transition: 'color 0.15s' }}>
+                                ◇
+                              </span>
+                              <span
+                                className="truncate group-hover:text-text-primary transition-colors"
+                                style={{ fontSize: '10px', color: activeSnippetId === sid ? 'var(--color-accent)' : 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0 }}
+                              >
+                                {s.name}
+                              </span>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </>
         )}
       </div>
 
