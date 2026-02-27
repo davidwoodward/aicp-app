@@ -7,9 +7,10 @@ interface Props {
   projectName: string
   onConfirm: () => void
   onCancel: () => void
+  permanent?: boolean
 }
 
-export default function DeleteProjectModal({ projectId, projectName, onConfirm, onCancel }: Props) {
+export default function DeleteProjectModal({ projectId, projectName, onConfirm, onCancel, permanent }: Props) {
   const [confirmText, setConfirmText] = useState('')
   const [stats, setStats] = useState<ProjectStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -20,14 +21,18 @@ export default function DeleteProjectModal({ projectId, projectName, onConfirm, 
   useEffect(() => {
     projectsApi.stats(projectId)
       .then(setStats)
-      .catch(() => setStats({ prompts: 0, sessions: 0 }))
+      .catch(() => setStats({ prompts: 0 }))
       .finally(() => setLoading(false))
   }, [projectId])
 
   async function handleDelete() {
     setDeleting(true)
     try {
-      await projectsApi.delete(projectId)
+      if (permanent) {
+        await projectsApi.permanentDelete(projectId)
+      } else {
+        await projectsApi.delete(projectId)
+      }
       onConfirm()
     } catch {
       setDeleting(false)
@@ -60,14 +65,14 @@ export default function DeleteProjectModal({ projectId, projectName, onConfirm, 
             letterSpacing: '0.2em', textTransform: 'uppercase',
             color: 'rgba(239, 68, 68, 0.8)',
           }}>
-            Delete Project
+            {permanent ? 'Permanently Delete Project' : 'Delete Project'}
           </span>
         </div>
 
         {/* Body */}
         <div className="px-4 py-4 space-y-4">
           <div style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', lineHeight: 1.6 }}>
-            You are about to delete{' '}
+            You are about to {permanent ? 'permanently delete' : 'delete'}{' '}
             <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>{projectName}</span>
           </div>
 
@@ -76,7 +81,7 @@ export default function DeleteProjectModal({ projectId, projectName, onConfirm, 
             <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
               Loading project data...
             </div>
-          ) : stats && (stats.prompts > 0 || stats.sessions > 0) ? (
+          ) : stats && stats.prompts > 0 ? (
             <div
               className="rounded px-3 py-2"
               style={{
@@ -86,8 +91,7 @@ export default function DeleteProjectModal({ projectId, projectName, onConfirm, 
               }}
             >
               This will remove:{' '}
-              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{stats.prompts}</span> prompt{stats.prompts !== 1 ? 's' : ''},{' '}
-              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{stats.sessions}</span> session{stats.sessions !== 1 ? 's' : ''}
+              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{stats.prompts}</span> prompt{stats.prompts !== 1 ? 's' : ''}
             </div>
           ) : null}
 
@@ -157,7 +161,7 @@ export default function DeleteProjectModal({ projectId, projectName, onConfirm, 
               transition: 'background 0.15s, opacity 0.15s',
             }}
           >
-            {deleting ? 'Deleting...' : 'Delete Project'}
+            {deleting ? 'Deleting...' : permanent ? 'Permanently Delete' : 'Delete Project'}
           </button>
         </div>
       </div>
