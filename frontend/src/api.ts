@@ -1,8 +1,21 @@
 const BASE = '/api';
 
+// --- Auth Token Management ---
+
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {};
   if (opts?.body) headers['Content-Type'] = 'application/json';
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
   const res = await fetch(`${BASE}${path}`, {
     headers,
     ...opts,
@@ -457,9 +470,12 @@ export function sendChatMessage(
 ): AbortController {
   const controller = new AbortController();
 
+  const chatHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authToken) chatHeaders['Authorization'] = `Bearer ${authToken}`;
+
   fetch(`${BASE}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: chatHeaders,
     body: JSON.stringify(params),
     signal: controller.signal,
   })
@@ -513,3 +529,38 @@ export function sendChatMessage(
 
   return controller;
 }
+
+// --- Auth Types & API ---
+
+export interface AuthUser {
+  id: string;
+  tenant_id: string;
+  email: string;
+  name: string;
+  picture: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const auth = {
+  login: (idToken: string) =>
+    request<AuthUser>('/auth/login', { method: 'POST', body: JSON.stringify({ id_token: idToken }) }),
+  me: () => request<AuthUser>('/auth/me'),
+};
+
+// --- User Settings Types & API ---
+
+export interface UserModelsConfig {
+  gemini_api_key: string | null;
+  openai_api_key: string | null;
+  anthropic_api_key: string | null;
+}
+
+export const userSettings = {
+  getProfile: () => request<AuthUser>('/user/profile'),
+  updateProfile: (data: { name: string }) =>
+    request<AuthUser>('/user/profile', { method: 'PATCH', body: JSON.stringify(data) }),
+  getModels: () => request<UserModelsConfig>('/user/models'),
+  updateModels: (data: Partial<Record<'gemini_api_key' | 'openai_api_key' | 'anthropic_api_key', string>>) =>
+    request<UserModelsConfig>('/user/models', { method: 'PATCH', body: JSON.stringify(data) }),
+};
