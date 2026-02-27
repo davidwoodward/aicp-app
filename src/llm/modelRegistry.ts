@@ -4,9 +4,11 @@
 
 import {
   loadLLMConfig,
+  loadUserLLMConfig,
   isValidProvider,
   type ProviderName,
   type ProviderConfig,
+  type UserLLMKeys,
 } from "./config";
 import { getSetting, upsertSetting } from "../firestore/settings";
 
@@ -176,8 +178,9 @@ export async function resolveProvider(
   requestProvider?: string,
   requestModel?: string,
   projectId?: string,
+  userKeys?: UserLLMKeys,
 ): Promise<{ providerName: ProviderName; model: string; config: ProviderConfig }> {
-  const llmConfig = loadLLMConfig();
+  const llmConfig = userKeys ? loadUserLLMConfig(userKeys) : loadLLMConfig();
 
   // 1. Explicit request override
   if (requestProvider && isValidProvider(requestProvider)) {

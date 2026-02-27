@@ -11,6 +11,8 @@ import { registerActivityLogRoutes } from "./activity-logs";
 import { registerCompositionRoutes } from "./compositions";
 import { registerAgentRoutes } from "./agents";
 import { registerSettingsRoutes } from "./settings";
+import { registerAuthRoutes } from "./auth";
+import { registerUserSettingsRoutes } from "./user-settings";
 
 export function registerRoutes(app: FastifyInstance) {
   app.register(
@@ -31,6 +33,8 @@ export function registerRoutes(app: FastifyInstance) {
       registerCompositionRoutes(api);
       registerAgentRoutes(api);
       registerSettingsRoutes(api);
+      registerAuthRoutes(api);
+      registerUserSettingsRoutes(api);
     },
     { prefix: "/api" }
   );
