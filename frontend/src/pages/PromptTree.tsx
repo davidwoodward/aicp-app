@@ -1,8 +1,7 @@
-import { useState, useRef, useCallback, type Dispatch, type SetStateAction } from 'react'
+import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react'
 import { prompts as api, type Prompt, type DayActivity } from '../api'
 import type { PromptMetrics } from '../api'
 import StatusBadge from '../components/StatusBadge'
-import PromptComposer from '../components/PromptComposer'
 import { useTreeMetrics } from '../hooks/useTreeMetrics'
 import { useCollapseState } from '../hooks/useCollapseState'
 
@@ -66,8 +65,10 @@ function TreeNode({
   prompt,
   allPrompts,
   depth,
-  onEdit,
   onAddChild,
+  onDelete,
+  onRestore,
+  onPermanentDelete,
   onDrop,
   metricsMap,
   timelineMap,
@@ -77,8 +78,10 @@ function TreeNode({
   prompt: Prompt
   allPrompts: Prompt[]
   depth: number
-  onEdit: (p: Prompt) => void
   onAddChild: (parentId: string) => void
+  onDelete: (p: Prompt) => void
+  onRestore?: (p: Prompt) => void
+  onPermanentDelete?: (p: Prompt) => void
   onDrop: (draggedId: string, targetId: string | null) => void
   metricsMap: Map<string, PromptMetrics>
   timelineMap: Map<string, DayActivity[]>
@@ -86,10 +89,13 @@ function TreeNode({
   onToggleCollapse: (id: string) => void
 }) {
   const [dragOver, setDragOver] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmPermanentDelete, setConfirmPermanentDelete] = useState(false)
   const dragLeaveTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
   const children = buildTree(allPrompts, prompt.id)
   const hasChildren = children.length > 0
   const collapsed = isCollapsed(prompt.id)
+  const isArchived = !!prompt.deleted_at
 
   const metrics = metricsMap.get(prompt.id)
   const timeline = timelineMap.get(prompt.id)
@@ -125,17 +131,18 @@ function TreeNode({
   return (
     <div>
       <div
-        draggable
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDropOnNode}
+        draggable={!isArchived}
+        onDragStart={isArchived ? undefined : handleDragStart}
+        onDragOver={isArchived ? undefined : handleDragOver}
+        onDragLeave={isArchived ? undefined : handleDragLeave}
+        onDrop={isArchived ? undefined : handleDropOnNode}
         className="group flex items-center gap-2 py-1.5 px-2 rounded hover:bg-surface-2 transition-colors cursor-pointer"
         style={{
           paddingLeft: `${depth * 20 + 8}px`,
           background: dragOver ? 'rgba(110, 231, 183, 0.12)' : heatBg,
           borderLeft: dragOver ? '3px solid var(--color-accent)' : '3px solid transparent',
-          transition: 'background 0.15s, border-color 0.15s',
+          opacity: isArchived ? 0.8 : 1,
+          transition: 'background 0.15s, border-color 0.15s, opacity 0.15s',
         }}
       >
         {/* Expand/collapse */}
@@ -163,7 +170,7 @@ function TreeNode({
         <span className="text-sm font-medium truncate flex-1">{prompt.title}</span>
 
         {/* Stale badge */}
-        {metrics?.stale && (
+        {!isArchived && metrics?.stale && (
           <span
             title="No activity in 7+ days"
             style={{ fontSize: '12px', flexShrink: 0, color: 'var(--color-status-offline)', lineHeight: 1 }}
@@ -173,20 +180,95 @@ function TreeNode({
         )}
 
         {/* Actions */}
-        <div className="hidden group-hover:flex items-center gap-1">
-          <button
-            onClick={(e) => { e.stopPropagation(); onEdit(prompt) }}
-            className="px-1.5 py-0.5 text-[10px] font-mono text-text-muted hover:text-text-primary transition-colors"
-          >
-            edit
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onAddChild(prompt.id) }}
-            className="px-1.5 py-0.5 text-[10px] font-mono text-text-muted hover:text-accent transition-colors"
-          >
-            +child
-          </button>
-        </div>
+        {isArchived ? (
+          <div className="hidden group-hover:flex items-center gap-0.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); onRestore?.(prompt) }}
+              className="p-0.5 rounded hover:bg-accent/15 transition-colors"
+              title="Restore prompt"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              </svg>
+            </button>
+            {confirmPermanentDelete ? (
+              <span
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded ml-0.5"
+                style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-danger)' }}>Delete forever?</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onPermanentDelete?.(prompt); setConfirmPermanentDelete(false) }}
+                  className="px-1 py-0 rounded text-[9px] font-mono font-bold transition-colors"
+                  style={{ background: 'rgba(239, 68, 68, 0.8)', color: '#fff' }}
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmPermanentDelete(false) }}
+                  className="px-1 py-0 rounded text-[9px] font-mono text-text-muted hover:text-text-primary transition-colors"
+                >
+                  No
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmPermanentDelete(true) }}
+                className="p-0.5 rounded hover:bg-danger/15 transition-colors ml-0.5"
+                title="Permanently delete"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="hidden group-hover:flex items-center gap-0.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); onAddChild(prompt.id) }}
+              className="px-1.5 py-0.5 text-[10px] font-mono text-text-muted hover:text-accent transition-colors"
+            >
+              +child
+            </button>
+            {confirmDelete ? (
+              <span
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded ml-0.5"
+                style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-danger)' }}>Archive?</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(prompt); setConfirmDelete(false) }}
+                  className="px-1 py-0 rounded text-[9px] font-mono font-bold transition-colors"
+                  style={{ background: 'rgba(239, 68, 68, 0.8)', color: '#fff' }}
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(false) }}
+                  className="px-1 py-0 rounded text-[9px] font-mono text-text-muted hover:text-text-primary transition-colors"
+                >
+                  No
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete(true) }}
+                className="p-0.5 rounded hover:bg-danger/15 transition-colors ml-0.5"
+                title="Archive"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Children */}
@@ -196,8 +278,10 @@ function TreeNode({
           prompt={child}
           allPrompts={allPrompts}
           depth={depth + 1}
-          onEdit={onEdit}
           onAddChild={onAddChild}
+          onDelete={onDelete}
+          onRestore={onRestore}
+          onPermanentDelete={onPermanentDelete}
           onDrop={onDrop}
           metricsMap={metricsMap}
           timelineMap={timelineMap}
@@ -209,20 +293,35 @@ function TreeNode({
   )
 }
 
+type PromptFilter = 'active' | 'all' | 'archived'
+
 export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
-  const [editing, setEditing] = useState<Prompt | null>(null)
   const [creating, setCreating] = useState<{ parentId: string | null } | null>(null)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
-  const [status, setStatus] = useState<string>('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [rootDropOver, setRootDropOver] = useState(false)
+  const [filter, setFilter] = useState<PromptFilter>('active')
+  const [archivedPrompts, setArchivedPrompts] = useState<Prompt[]>([])
+  const [archivedLoadKey, setArchivedLoadKey] = useState(0)
 
   const { metricsMap, timelineMap, refresh: refreshMetrics } = useTreeMetrics(projectId)
   const { isCollapsed, toggle: toggleCollapse } = useCollapseState(projectId)
 
-  const roots = buildTree(prompts, null)
+  // Load archived prompts when filter needs them or when archive state changes
+  useEffect(() => {
+    if (filter === 'archived' || filter === 'all') {
+      api.listDeleted(projectId).then(setArchivedPrompts).catch(() => setArchivedPrompts([]))
+    }
+  }, [filter, projectId, archivedLoadKey])
+
+  const displayPrompts = filter === 'active'
+    ? prompts
+    : filter === 'archived'
+      ? archivedPrompts
+      : [...prompts, ...archivedPrompts]
+  const roots = buildTree(displayPrompts, null)
 
   const handleDrop = useCallback(async (draggedId: string, targetId: string | null) => {
     const dragged = prompts.find(p => p.id === draggedId)
@@ -244,101 +343,90 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
     }
   }, [prompts, setPrompts, refreshMetrics])
 
-  function openEdit(p: Prompt) {
-    setEditing(p)
-    setCreating(null)
-    setTitle(p.title)
-    setBody(p.body)
-    setStatus(p.status)
-    setError('')
-  }
-
   function openCreate(parentId: string | null) {
     setCreating({ parentId })
-    setEditing(null)
     setTitle('')
     setBody('')
-    setStatus('')
     setError('')
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
+    if (!creating) return
     setSaving(true)
     setError('')
     try {
-      if (editing) {
-        const updates: Record<string, unknown> = { title, body }
-        if (status && status !== editing.status) updates.status = status
-        const snapshot = editing
-        const optimistic = { ...editing, title, body, ...(status && status !== editing.status ? { status: status as Prompt['status'] } : {}) }
-        setPrompts(prev => prev.map(p => p.id === editing.id ? optimistic : p))
-        setEditing(null)
-        setCreating(null)
-        try {
-          const saved = await api.update(snapshot.id, updates)
-          setPrompts(prev => prev.map(p => p.id === saved.id ? saved : p))
-          refreshMetrics()
-        } catch (err: unknown) {
-          setPrompts(prev => prev.map(p => p.id === snapshot.id ? snapshot : p))
-          setError(err instanceof Error ? err.message : 'Failed to save')
-          setEditing(snapshot)
-          setTitle(snapshot.title)
-          setBody(snapshot.body)
-          setStatus(snapshot.status)
-        }
-      } else if (creating) {
-        const tempId = `temp-${crypto.randomUUID()}`
-        const optimistic: Prompt = {
-          id: tempId,
+      const tempId = `temp-${crypto.randomUUID()}`
+      const optimistic: Prompt = {
+        id: tempId,
+        project_id: projectId,
+        title,
+        body,
+        status: 'draft',
+        order_index: prompts.length,
+        parent_prompt_id: creating.parentId,
+        agent_id: null,
+        created_at: new Date().toISOString(),
+        sent_at: null,
+        done_at: null,
+        deleted_at: null,
+      }
+      setPrompts(prev => [...prev, optimistic])
+      setCreating(null)
+      try {
+        const saved = await api.create({
           project_id: projectId,
           title,
           body,
-          status: 'draft',
           order_index: prompts.length,
           parent_prompt_id: creating.parentId,
-          agent_id: null,
-          created_at: new Date().toISOString(),
-          sent_at: null,
-          done_at: null,
-        }
-        setPrompts(prev => [...prev, optimistic])
-        setEditing(null)
-        setCreating(null)
-        try {
-          const saved = await api.create({
-            project_id: projectId,
-            title,
-            body,
-            order_index: prompts.length,
-            parent_prompt_id: creating.parentId,
-          })
-          setPrompts(prev => prev.map(p => p.id === tempId ? saved : p))
-          refreshMetrics()
-        } catch (err: unknown) {
-          setPrompts(prev => prev.filter(p => p.id !== tempId))
-          setError(err instanceof Error ? err.message : 'Failed to create')
-        }
+        })
+        setPrompts(prev => prev.map(p => p.id === tempId ? saved : p))
+        refreshMetrics()
+      } catch (err: unknown) {
+        setPrompts(prev => prev.filter(p => p.id !== tempId))
+        setError(err instanceof Error ? err.message : 'Failed to create')
       }
     } finally {
       setSaving(false)
     }
   }
 
-  async function handleDelete() {
-    if (!editing) return
-    setSaving(true)
-    const snapshot = editing
+  async function handleDeleteDirect(prompt: Prompt) {
+    const snapshot = prompt
     setPrompts(prev => prev.filter(p => p.id !== snapshot.id))
-    setEditing(null)
     try {
       await api.delete(snapshot.id)
+      // Trigger a refetch of archived prompts so it appears in Archived/All
+      setArchivedLoadKey(k => k + 1)
       refreshMetrics()
     } catch (err: unknown) {
       setPrompts(prev => [...prev, snapshot])
       setError(err instanceof Error ? err.message : 'Failed to delete')
-    } finally {
-      setSaving(false)
+    }
+  }
+
+  async function handleRestore(prompt: Prompt) {
+    try {
+      const restored = await api.restore(prompt.id)
+      // Add back to active prompts
+      setPrompts(prev => [...prev, restored].sort((a, b) => a.order_index - b.order_index))
+      // Remove from archived view
+      setArchivedPrompts(prev => prev.filter(p => p.id !== prompt.id))
+      refreshMetrics()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to restore')
+    }
+  }
+
+  async function handlePermanentDelete(prompt: Prompt) {
+    const snapshot = prompt
+    setArchivedPrompts(prev => prev.filter(p => p.id !== snapshot.id))
+    try {
+      await api.permanentDelete(snapshot.id)
+    } catch (err: unknown) {
+      setArchivedPrompts(prev => [snapshot, ...prev])
+      setError(err instanceof Error ? err.message : 'Failed to permanently delete')
     }
   }
 
@@ -365,50 +453,74 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
       {/* Tree */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-mono text-text-muted uppercase tracking-wider">Prompt Tree</span>
-          <button
-            onClick={() => openCreate(null)}
-            className="px-2 py-1 text-[10px] font-mono font-medium bg-accent/10 text-accent border border-accent/20 rounded hover:bg-accent/20 transition-colors"
-          >
-            + Root Prompt
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-text-muted uppercase tracking-wider">Prompt Tree</span>
+            <div className="flex items-center gap-0.5 ml-2">
+              {(['active', 'all', 'archived'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded transition-colors"
+                  style={{
+                    background: filter === f ? 'rgba(110, 231, 183, 0.12)' : 'transparent',
+                    color: filter === f ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                    border: filter === f ? '1px solid rgba(110, 231, 183, 0.25)' : '1px solid transparent',
+                  }}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+          {filter === 'active' && (
+            <button
+              onClick={() => openCreate(null)}
+              className="px-2 py-1 text-[10px] font-mono font-medium bg-accent/10 text-accent border border-accent/20 rounded hover:bg-accent/20 transition-colors"
+            >
+              + Root Prompt
+            </button>
+          )}
         </div>
 
         {roots.length === 0 ? (
           <div className="text-center py-10 text-text-muted text-sm">
-            No prompts yet.
+            {filter === 'active' ? 'No prompts yet.' : filter === 'archived' ? 'No archived prompts.' : 'No prompts yet.'}
           </div>
         ) : (
           <div className="bg-surface-1 border border-border rounded-lg p-2">
-            {/* Root drop zone (top) */}
-            <div
-              onDragOver={handleRootDragOver}
-              onDragLeave={handleRootDragLeave}
-              onDrop={handleRootDrop}
-              className="rounded transition-colors"
-              style={{
-                height: rootDropOver ? '32px' : '4px',
-                background: rootDropOver ? 'rgba(110, 231, 183, 0.12)' : 'transparent',
-                borderLeft: rootDropOver ? '3px solid var(--color-accent)' : '3px solid transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'height 0.15s, background 0.15s, border-color 0.15s',
-              }}
-            >
-              {rootDropOver && (
-                <span className="text-[10px] font-mono text-accent">Drop here to make root</span>
-              )}
-            </div>
+            {/* Root drop zone (top) — only in active view */}
+            {filter === 'active' && (
+              <div
+                onDragOver={handleRootDragOver}
+                onDragLeave={handleRootDragLeave}
+                onDrop={handleRootDrop}
+                className="rounded transition-colors"
+                style={{
+                  height: rootDropOver ? '32px' : '4px',
+                  background: rootDropOver ? 'rgba(110, 231, 183, 0.12)' : 'transparent',
+                  borderLeft: rootDropOver ? '3px solid var(--color-accent)' : '3px solid transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'height 0.15s, background 0.15s, border-color 0.15s',
+                }}
+              >
+                {rootDropOver && (
+                  <span className="text-[10px] font-mono text-accent">Drop here to make root</span>
+                )}
+              </div>
+            )}
 
             {roots.map((p) => (
               <TreeNode
                 key={p.id}
                 prompt={p}
-                allPrompts={prompts}
+                allPrompts={displayPrompts}
                 depth={0}
-                onEdit={openEdit}
                 onAddChild={(parentId) => openCreate(parentId)}
+                onDelete={handleDeleteDirect}
+                onRestore={handleRestore}
+                onPermanentDelete={handlePermanentDelete}
                 onDrop={handleDrop}
                 metricsMap={metricsMap}
                 timelineMap={timelineMap}
@@ -417,42 +529,44 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
               />
             ))}
 
-            {/* Root drop zone (bottom) */}
-            <div
-              onDragOver={handleRootDragOver}
-              onDragLeave={handleRootDragLeave}
-              onDrop={handleRootDrop}
-              className="rounded transition-colors"
-              style={{
-                height: rootDropOver ? '32px' : '4px',
-                background: rootDropOver ? 'rgba(110, 231, 183, 0.12)' : 'transparent',
-                borderLeft: rootDropOver ? '3px solid var(--color-accent)' : '3px solid transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'height 0.15s, background 0.15s, border-color 0.15s',
-              }}
-            >
-              {rootDropOver && (
-                <span className="text-[10px] font-mono text-accent">Drop here to make root</span>
-              )}
-            </div>
+            {/* Root drop zone (bottom) — only in active view */}
+            {filter === 'active' && (
+              <div
+                onDragOver={handleRootDragOver}
+                onDragLeave={handleRootDragLeave}
+                onDrop={handleRootDrop}
+                className="rounded transition-colors"
+                style={{
+                  height: rootDropOver ? '32px' : '4px',
+                  background: rootDropOver ? 'rgba(110, 231, 183, 0.12)' : 'transparent',
+                  borderLeft: rootDropOver ? '3px solid var(--color-accent)' : '3px solid transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'height 0.15s, background 0.15s, border-color 0.15s',
+                }}
+              >
+                {rootDropOver && (
+                  <span className="text-[10px] font-mono text-accent">Drop here to make root</span>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {error && !editing && !creating && (
+        {error && !creating && (
           <div className="mt-2 px-2 py-1.5 text-[10px] font-mono bg-danger/10 text-danger border border-danger/20 rounded">
             {error}
           </div>
         )}
       </div>
 
-      {/* Editor panel */}
-      {(editing || creating) && (
+      {/* Create panel */}
+      {creating && (
         <div className="w-80 shrink-0">
           <form onSubmit={handleSave} className="bg-surface-1 border border-border rounded-lg p-4 space-y-3 sticky top-16">
             <div className="text-xs font-mono text-text-muted uppercase tracking-wider mb-2">
-              {editing ? 'Edit Prompt' : 'New Prompt'}
+              New Prompt
             </div>
 
             {error && (
@@ -478,33 +592,6 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
               className="w-full px-3 py-2 text-sm bg-surface-2 border border-border rounded text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50 resize-y font-mono text-xs leading-relaxed"
             />
 
-            {editing && (
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-2 border border-border rounded text-text-primary focus:outline-none focus:border-accent/50"
-              >
-                <option value="draft">Draft</option>
-                <option value="ready">Ready</option>
-                <option value="sent">Sent</option>
-                <option value="done">Done</option>
-              </select>
-            )}
-
-            {/* Snippet composer — only when editing an existing prompt */}
-            {editing && (
-              <PromptComposer
-                promptId={editing.id}
-                onApplied={(composedBody) => {
-                  setBody(composedBody)
-                  // Also update the prompt in the tree optimistically
-                  setPrompts(prev => prev.map(p =>
-                    p.id === editing.id ? { ...p, body: composedBody } : p
-                  ))
-                }}
-              />
-            )}
-
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -513,19 +600,9 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>
-              {editing && (
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={saving}
-                  className="px-3 py-2 text-xs font-mono font-medium bg-danger/10 text-danger border border-danger/20 rounded hover:bg-danger/20 transition-colors disabled:opacity-50"
-                >
-                  Delete
-                </button>
-              )}
               <button
                 type="button"
-                onClick={() => { setEditing(null); setCreating(null) }}
+                onClick={() => setCreating(null)}
                 className="px-3 py-2 text-xs font-mono text-text-muted hover:text-text-primary transition-colors"
               >
                 Cancel

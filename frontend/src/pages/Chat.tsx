@@ -1,21 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useOutletContext } from 'react-router-dom'
+import { useOutletContext } from 'react-router-dom'
 import {
-  conversations as convsApi,
   prompts as promptsApi,
   agents as agentsApi,
   type Prompt,
   type Agent,
-  type ChatMessage,
+  type Snippet,
 } from '../api'
 import PromptCard from '../components/PromptCard'
+import SnippetSelectorModal from '../components/SnippetSelectorModal'
 import ChatInput, { type ChatInputHandle } from '../components/ChatInput'
 import CommandSuggestions from '../components/CommandSuggestions'
 import ModelSelector from '../components/ModelSelector'
 import RefineSelector, { type RefineMode } from '../components/RefineSelector'
 import RefineDiff from '../components/RefineDiff'
 import HistoryPanel from '../components/HistoryPanel'
-import SessionsPanel from '../components/SessionsPanel'
+import PromptExecutionHistory from '../components/PromptExecutionHistory'
 import { useCommandSuggestions } from '../hooks/useCommandSuggestions'
 
 interface Props {
@@ -31,18 +31,17 @@ interface SystemEntry {
 }
 
 export default function Chat({ provider, model, onModelChange }: Props) {
-  const { conversationId } = useParams<{ conversationId: string }>()
-  const outletCtx = useOutletContext<{ selectedProject?: string | null; setSelectedProject?: (id: string | null) => void } | null>()
+  const outletCtx = useOutletContext<{ selectedProject?: string | null; setSelectedProject?: (id: string | null) => void; activePromptId?: string | null; setActivePromptId?: (id: string | null) => void; onPromptUpdated?: () => void } | null>()
   const selectedProject = outletCtx?.selectedProject ?? null
+  const activePromptId = outletCtx?.activePromptId ?? null
+  const setActivePromptId = outletCtx?.setActivePromptId
+  const onPromptUpdated = outletCtx?.onPromptUpdated
 
   // Prompt cards state
   const [prompts, setPrompts] = useState<Prompt[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [loadingPrompts, setLoadingPrompts] = useState(false)
-
-  // Conversation view state (for /c/:id route)
-  const [convMessages, setConvMessages] = useState<ChatMessage[]>([])
-  const [loadingConv, setLoadingConv] = useState(false)
+  const promptsLoadedFor = useRef<string | null>(null)
 
   // System log (slash command output)
   const [systemLog, setSystemLog] = useState<SystemEntry[]>([])
@@ -55,7 +54,8 @@ export default function Chat({ provider, model, onModelChange }: Props) {
   const [refineDiff, setRefineDiff] = useState<{ promptId: string; original: string; refined: string } | null>(null)
   const [refineLoading, setRefineLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
-  const [showSessions, setShowSessions] = useState(false)
+  const [showSnippetSelector, setShowSnippetSelector] = useState(false)
+  const [pendingSnippetContent, setPendingSnippetContent] = useState<string | null>(null)
 
   const chatInputRef = useRef<ChatInputHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -65,28 +65,36 @@ export default function Chat({ provider, model, onModelChange }: Props) {
   const showSuggestions = slashQuery !== null
 
   // Load prompts and agents when project changes
-  useEffect(() => {
-    if (!selectedProject) { setPrompts([]); setAgents([]); return }
+  const loadPromptsForProject = useCallback((projectId: string) => {
     setLoadingPrompts(true)
-    setSystemLog([])
     Promise.all([
-      promptsApi.list(selectedProject),
-      agentsApi.listByProject(selectedProject),
+      promptsApi.list(projectId).catch(() => [] as Prompt[]),
+      agentsApi.listByProject(projectId).catch(() => [] as Agent[]),
     ]).then(([p, a]) => {
       setPrompts(p)
       setAgents(a)
-      // Restore scroll position after prompts load
       requestAnimationFrame(() => {
         const el = scrollRef.current
         if (!el) return
         try {
-          const saved = sessionStorage.getItem(`aicp:scroll:${selectedProject}`)
+          const saved = sessionStorage.getItem(`aicp:scroll:${projectId}`)
           if (saved) el.scrollTop = parseInt(saved, 10)
         } catch {}
       })
-    }).catch(() => {})
-      .finally(() => setLoadingPrompts(false))
-  }, [selectedProject])
+    }).finally(() => {
+      promptsLoadedFor.current = projectId
+      setLoadingPrompts(false)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setPrompts([]); setAgents([]); promptsLoadedFor.current = null
+      return
+    }
+    setSystemLog([])
+    loadPromptsForProject(selectedProject)
+  }, [selectedProject, loadPromptsForProject])
 
   // Save scroll position (debounced)
   function handleScroll() {
@@ -98,16 +106,6 @@ export default function Chat({ provider, model, onModelChange }: Props) {
       } catch {}
     }, 200)
   }
-
-  // Load conversation messages (for /c/:id)
-  useEffect(() => {
-    if (!conversationId) { setConvMessages([]); return }
-    setLoadingConv(true)
-    convsApi.messages(conversationId)
-      .then(msgs => setConvMessages(msgs.filter(m => m.role !== 'tool')))
-      .catch(() => setConvMessages([]))
-      .finally(() => setLoadingConv(false))
-  }, [conversationId])
 
   // ── System log helper ──────────────────────────────────────────────
   const pushSystemEntry = useCallback((content: string, type: 'info' | 'error' = 'info') => {
@@ -121,6 +119,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
   // ── Prompt CRUD ────────────────────────────────────────────────────
   function handlePromptUpdate(updated: Prompt) {
     setPrompts(prev => prev.map(p => p.id === updated.id ? updated : p))
+    onPromptUpdated?.()
   }
 
   const createDraftPrompt = useCallback(async (text: string) => {
@@ -152,7 +151,11 @@ export default function Chat({ provider, model, onModelChange }: Props) {
         break
 
       case '/snippet':
-        pushSystemEntry('Snippet browser — coming soon')
+        if (!activePromptId) {
+          pushSystemEntry('Select a prompt first to insert a snippet', 'error')
+        } else {
+          setShowSnippetSelector(true)
+        }
         break
 
       case '/model':
@@ -170,14 +173,6 @@ export default function Chat({ provider, model, onModelChange }: Props) {
       case '/history':
         if (selectedProject) {
           setShowHistory(true)
-        } else {
-          pushSystemEntry('Select a project first', 'error')
-        }
-        break
-
-      case '/sessions':
-        if (selectedProject) {
-          setShowSessions(true)
         } else {
           pushSystemEntry('Select a project first', 'error')
         }
@@ -247,153 +242,179 @@ export default function Chat({ provider, model, onModelChange }: Props) {
     chatInputRef.current?.setValue(text)
   }
 
+  function handleSnippetInsert(snippet: Snippet) {
+    setShowSnippetSelector(false)
+    if (activePromptId) {
+      setPendingSnippetContent(snippet.content)
+      pushSystemEntry(`Inserted snippet "${snippet.name}"`)
+    } else {
+      pushSystemEntry('Select a prompt first to insert a snippet', 'error')
+    }
+  }
+
   // ── View mode ──────────────────────────────────────────────────────
-  const showPromptCards = !!selectedProject && !conversationId
-  const showConversation = !!conversationId
+  const showSinglePrompt = !!activePromptId && !!selectedProject
+  const showPromptCards = !!selectedProject && !activePromptId
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Main content area */}
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
 
-          {/* System log */}
-          {systemLog.length > 0 && (
-            <div className="space-y-1.5 mb-2">
-              {systemLog.map(entry => (
-                <div
-                  key={entry.id}
-                  className="px-3 py-2 rounded text-xs font-mono leading-relaxed whitespace-pre-wrap"
-                  style={{
-                    background: entry.type === 'error' ? 'rgba(239, 68, 68, 0.06)' : 'var(--color-surface-1)',
-                    border: `1px solid ${entry.type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'var(--color-border)'}`,
-                    color: entry.type === 'error' ? 'var(--color-danger)' : 'var(--color-text-secondary)',
-                  }}
-                >
-                  {entry.content}
-                </div>
-              ))}
+      {/* ── Single Prompt editor (full-bleed, fills panel) ──────────── */}
+      {showSinglePrompt && (() => {
+        const promptsStale = promptsLoadedFor.current !== selectedProject
+        if (loadingPrompts || promptsStale) {
+          return (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-text-muted font-mono text-sm animate-pulse">
+                Loading prompt...
+              </div>
+            </div>
+          )
+        }
+        const activePrompt = prompts.find(p => p.id === activePromptId)
+        if (!activePrompt) {
+          return (
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <div className="text-text-muted text-sm mb-2">Prompt not found.</div>
               <button
-                onClick={() => setSystemLog([])}
-                className="text-[9px] font-mono text-text-muted hover:text-text-secondary transition-colors"
+                onClick={() => setActivePromptId?.(null)}
+                className="text-xs font-mono text-accent hover:underline"
               >
-                clear
+                Show all prompts
               </button>
             </div>
-          )}
-
-          {/* Refine diff preview */}
-          {(refineDiff || refineLoading) && (
-            <RefineDiff
-              original={refineDiff?.original ?? ''}
-              refined={refineDiff?.refined ?? ''}
-              loading={refineLoading}
-              onAccept={handleRefineAccept}
-              onReject={() => setRefineDiff(null)}
-            />
-          )}
-
-          {/* History panel */}
-          {showHistory && selectedProject && (
-            <HistoryPanel
-              projectId={selectedProject}
-              onRestore={handleHistoryRestore}
-              onDismiss={() => setShowHistory(false)}
-            />
-          )}
-
-          {/* Sessions panel */}
-          {showSessions && selectedProject && (
-            <SessionsPanel
-              projectId={selectedProject}
-              agents={agents}
-              onDismiss={() => setShowSessions(false)}
-            />
-          )}
-
-          {/* Prompt Cards view */}
-          {showPromptCards && (
-            loadingPrompts ? (
-              <div className="text-text-muted font-mono text-sm animate-pulse py-8 text-center">
-                Loading prompts...
-              </div>
-            ) : prompts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <div className="text-text-muted text-sm mb-2">No prompts in this project.</div>
-                <div className="text-text-muted text-xs font-mono">
-                  Type below to create a draft prompt.
-                </div>
-              </div>
-            ) : (
-              prompts
-                .slice()
-                .sort((a, b) => a.order_index - b.order_index)
-                .map(prompt => (
-                  <PromptCard
-                    key={prompt.id}
-                    prompt={prompt}
-                    agents={agents}
-                    onUpdate={(p) => { handlePromptUpdate(p); setRefiningPromptId(null) }}
-                    onNavigateHistory={() => setShowHistory(true)}
-                    autoRefine={refiningPromptId === prompt.id}
-                    onRefineDismiss={() => setRefiningPromptId(null)}
-                  />
-                ))
-            )
-          )}
-
-          {/* Conversation view */}
-          {showConversation && (
-            loadingConv ? (
-              <div className="text-text-muted font-mono text-sm animate-pulse py-8 text-center">
-                Loading session...
-              </div>
-            ) : convMessages.length === 0 ? (
-              <div className="text-center py-16 text-text-muted text-sm">
-                No messages in this session.
-              </div>
-            ) : (
-              convMessages.map(msg => (
-                <div
-                  key={msg.id}
-                  className="rounded-lg border overflow-hidden"
-                  style={{
-                    background: msg.role === 'assistant' ? 'var(--color-surface-1)' : 'var(--color-surface-2)',
-                    borderColor: msg.role === 'assistant' ? 'rgba(110, 231, 183, 0.15)' : 'var(--color-border)',
-                  }}
-                >
-                  <div
-                    className="flex items-center gap-2 px-4 py-2"
-                    style={{ borderBottom: '1px solid var(--color-border)' }}
-                  >
-                    <span
-                      className="text-[9px] font-mono font-semibold uppercase tracking-wider"
-                      style={{ color: msg.role === 'assistant' ? 'var(--color-accent)' : 'var(--color-text-muted)' }}
-                    >
-                      {msg.role}
-                    </span>
-                    <span className="text-[9px] font-mono text-text-muted">
-                      {new Date(msg.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <div className="px-4 py-3 text-xs font-mono text-text-secondary leading-relaxed whitespace-pre-wrap">
-                    {msg.content}
-                  </div>
-                </div>
-              ))
-            )
-          )}
-
-          {/* Empty state */}
-          {!showPromptCards && !showConversation && systemLog.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16">
-              <div className="font-mono text-accent text-2xl font-bold mb-2">AICP</div>
-              <p className="text-text-muted text-sm">Select a project to view prompts.</p>
+          )
+        }
+        return (
+          <div className="flex-1 flex flex-col overflow-hidden p-4 gap-3">
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setActivePromptId?.(null)}
+                className="text-[10px] font-mono text-text-muted hover:text-accent transition-colors"
+              >
+                ← All prompts
+              </button>
             </div>
-          )}
+            <div className="flex-1 overflow-hidden">
+              <PromptCard
+                key={activePrompt.id}
+                prompt={activePrompt}
+                agents={agents}
+                onUpdate={(p) => { handlePromptUpdate(p); setRefiningPromptId(null) }}
+                onNavigateHistory={() => setShowHistory(true)}
+                onClose={() => setActivePromptId?.(null)}
+                autoRefine={refiningPromptId === activePrompt.id}
+                onRefineDismiss={() => setRefiningPromptId(null)}
+                onInsertSnippet={() => setShowSnippetSelector(true)}
+                pendingSnippetContent={pendingSnippetContent}
+                onSnippetInserted={() => setPendingSnippetContent(null)}
+                initialEdit
+                fillHeight
+                provider={provider}
+                model={model}
+              />
+            </div>
+          </div>
+        )
+      })()}
 
+      {/* ── Scrollable content (prompt cards, empty state, etc.) ──── */}
+      {!showSinglePrompt && (
+        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+
+            {/* System log */}
+            {systemLog.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {systemLog.map(entry => (
+                  <div
+                    key={entry.id}
+                    className="px-3 py-2 rounded text-xs font-mono leading-relaxed whitespace-pre-wrap"
+                    style={{
+                      background: entry.type === 'error' ? 'rgba(239, 68, 68, 0.06)' : 'var(--color-surface-1)',
+                      border: `1px solid ${entry.type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'var(--color-border)'}`,
+                      color: entry.type === 'error' ? 'var(--color-danger)' : 'var(--color-text-secondary)',
+                    }}
+                  >
+                    {entry.content}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setSystemLog([])}
+                  className="text-[9px] font-mono text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  clear
+                </button>
+              </div>
+            )}
+
+            {/* Refine diff preview */}
+            {(refineDiff || refineLoading) && (
+              <RefineDiff
+                original={refineDiff?.original ?? ''}
+                refined={refineDiff?.refined ?? ''}
+                loading={refineLoading}
+                onAccept={handleRefineAccept}
+                onReject={() => setRefineDiff(null)}
+              />
+            )}
+
+            {/* History panel */}
+            {showHistory && selectedProject && (
+              <HistoryPanel
+                projectId={selectedProject}
+                onRestore={handleHistoryRestore}
+                onDismiss={() => setShowHistory(false)}
+              />
+            )}
+
+            {/* Prompt Cards view */}
+            {showPromptCards && (
+              loadingPrompts ? (
+                <div className="text-text-muted font-mono text-sm animate-pulse py-8 text-center">
+                  Loading prompts...
+                </div>
+              ) : prompts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="text-text-muted text-sm mb-2">No prompts in this project.</div>
+                  <div className="text-text-muted text-xs font-mono">
+                    Type below to create a draft prompt.
+                  </div>
+                </div>
+              ) : (
+                prompts
+                  .slice()
+                  .sort((a, b) => a.order_index - b.order_index)
+                  .map(prompt => (
+                    <div
+                      key={prompt.id}
+                      className="cursor-pointer"
+                      onClick={() => setActivePromptId?.(prompt.id)}
+                    >
+                      <PromptCard
+                        prompt={prompt}
+                        agents={agents}
+                        onUpdate={(p) => { handlePromptUpdate(p); setRefiningPromptId(null) }}
+                        onNavigateHistory={() => setShowHistory(true)}
+                        autoRefine={refiningPromptId === prompt.id}
+                        onRefineDismiss={() => setRefiningPromptId(null)}
+                      />
+                    </div>
+                  ))
+              )
+            )}
+
+            {/* Empty state */}
+            {!showPromptCards && systemLog.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="font-mono text-accent text-2xl font-bold mb-2">AICP</div>
+                <p className="text-text-muted text-sm">Select a project to view prompts.</p>
+              </div>
+            )}
+
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Input area */}
       <div className="relative">
@@ -418,6 +439,13 @@ export default function Chat({ provider, model, onModelChange }: Props) {
             suggestions={suggestions}
             onSelect={handleSuggestionSelect}
             onDismiss={() => setSlashQuery(null)}
+          />
+        )}
+
+        {showSnippetSelector && (
+          <SnippetSelectorModal
+            onSelect={handleSnippetInsert}
+            onDismiss={() => setShowSnippetSelector(false)}
           />
         )}
 
