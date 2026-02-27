@@ -5,14 +5,21 @@ import type { RefineMode } from '../api'
 const DEFAULT_REFINE_SYSTEM_PROMPT =
   'You are a prompt refinement assistant. Analyze the given prompt and return a well-structured, clearly-worded markdown version. Improve clarity, structure, and precision while preserving the original intent. Return ONLY the refined prompt in markdown format. No explanations, no preamble.'
 
+const DEFAULT_PROMPT_PREVIEW_LINES = 3
+const DEFAULT_HISTORY_SNAPSHOT_DELAY = 20
+
 interface Props {
   refineMode: RefineMode
   refineSystemPrompt: string
   onRefineSettingsChange: (settings: { mode: RefineMode; system_prompt: string }) => void
+  promptPreviewLines: number
+  onPromptPreviewLinesChange: (lines: number) => void
+  historySnapshotDelay: number
+  onHistorySnapshotDelayChange: (seconds: number) => void
   onClose: () => void
 }
 
-export default function SettingsEditor({ refineMode, refineSystemPrompt, onRefineSettingsChange, onClose }: Props) {
+export default function SettingsEditor({ refineMode, refineSystemPrompt, onRefineSettingsChange, promptPreviewLines, onPromptPreviewLinesChange, historySnapshotDelay, onHistorySnapshotDelayChange, onClose }: Props) {
   const [localPrompt, setLocalPrompt] = useState(refineSystemPrompt)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -194,6 +201,110 @@ export default function SettingsEditor({ refineMode, refineSystemPrompt, onRefin
               }}
               placeholder="System prompt for refinement..."
             />
+          </div>
+        </div>
+
+        {/* Section: PROMPT CARDS */}
+        <div>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)', fontSize: '9px', fontWeight: 700,
+              letterSpacing: '0.2em', color: 'var(--color-text-muted)', textTransform: 'uppercase',
+              marginBottom: '12px',
+            }}
+          >
+            Prompt Cards
+          </div>
+
+          <div
+            className="flex items-center justify-between px-3 py-2.5 rounded"
+            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
+          >
+            <div>
+              <div style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', fontWeight: 500 }}>
+                Preview Height
+              </div>
+              <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                Lines of content shown before "More..."
+              </div>
+            </div>
+            <div className="flex items-center gap-2" style={{ flexShrink: 0, marginLeft: '12px' }}>
+              <input
+                type="range"
+                min={1}
+                max={20}
+                value={promptPreviewLines}
+                onChange={e => onPromptPreviewLinesChange(Number(e.target.value))}
+                style={{ width: '80px', accentColor: 'var(--color-accent)' }}
+              />
+              <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--color-text-primary)', minWidth: '24px', textAlign: 'right' }}>
+                {promptPreviewLines}
+              </span>
+              {promptPreviewLines !== DEFAULT_PROMPT_PREVIEW_LINES && (
+                <button
+                  onClick={() => onPromptPreviewLinesChange(DEFAULT_PROMPT_PREVIEW_LINES)}
+                  style={{
+                    fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-accent)',
+                    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                    textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Section: HISTORY */}
+        <div>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)', fontSize: '9px', fontWeight: 700,
+              letterSpacing: '0.2em', color: 'var(--color-text-muted)', textTransform: 'uppercase',
+              marginBottom: '12px',
+            }}
+          >
+            History
+          </div>
+
+          <div
+            className="flex items-center justify-between px-3 py-2.5 rounded"
+            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
+          >
+            <div>
+              <div style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', fontWeight: 500 }}>
+                Snapshot Delay
+              </div>
+              <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                Seconds of inactivity before saving a history snapshot
+              </div>
+            </div>
+            <div className="flex items-center gap-2" style={{ flexShrink: 0, marginLeft: '12px' }}>
+              <input
+                type="range"
+                min={5}
+                max={60}
+                value={historySnapshotDelay}
+                onChange={e => onHistorySnapshotDelayChange(Number(e.target.value))}
+                style={{ width: '80px', accentColor: 'var(--color-accent)' }}
+              />
+              <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--color-text-primary)', minWidth: '24px', textAlign: 'right' }}>
+                {historySnapshotDelay}s
+              </span>
+              {historySnapshotDelay !== DEFAULT_HISTORY_SNAPSHOT_DELAY && (
+                <button
+                  onClick={() => onHistorySnapshotDelayChange(DEFAULT_HISTORY_SNAPSHOT_DELAY)}
+                  style={{
+                    fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-accent)',
+                    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                    textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

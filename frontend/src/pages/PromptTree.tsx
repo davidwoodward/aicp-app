@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react'
-import { prompts as api, type Prompt, type DayActivity } from '../api'
+import { prompts as api, type Prompt } from '../api'
 import type { PromptMetrics } from '../api'
 import StatusBadge from '../components/StatusBadge'
 import { useTreeMetrics } from '../hooks/useTreeMetrics'
@@ -34,33 +34,6 @@ function isDescendant(promptId: string, ancestorId: string, allPrompts: Prompt[]
   return false
 }
 
-function Sparkline({ data }: { data: DayActivity[] }) {
-  const counts = data.map(d => d.count)
-  const max = Math.max(...counts, 1)
-  const W = 42
-  const H = 14
-  const barW = 5
-  const gap = 1
-  return (
-    <svg width={W} height={H} style={{ flexShrink: 0, opacity: 0.7 }}>
-      {counts.slice(-7).map((v, i) => {
-        const barH = Math.max(1, Math.round((v / max) * H))
-        return (
-          <rect
-            key={i}
-            x={i * (barW + gap)}
-            y={H - barH}
-            width={barW}
-            height={barH}
-            fill={v > 0 ? 'var(--color-accent)' : 'var(--color-border)'}
-            rx={1}
-          />
-        )
-      })}
-    </svg>
-  )
-}
-
 function TreeNode({
   prompt,
   allPrompts,
@@ -71,7 +44,6 @@ function TreeNode({
   onPermanentDelete,
   onDrop,
   metricsMap,
-  timelineMap,
   isCollapsed,
   onToggleCollapse,
 }: {
@@ -84,7 +56,6 @@ function TreeNode({
   onPermanentDelete?: (p: Prompt) => void
   onDrop: (draggedId: string, targetId: string | null) => void
   metricsMap: Map<string, PromptMetrics>
-  timelineMap: Map<string, DayActivity[]>
   isCollapsed: (id: string) => boolean
   onToggleCollapse: (id: string) => void
 }) {
@@ -98,7 +69,6 @@ function TreeNode({
   const isArchived = !!prompt.deleted_at
 
   const metrics = metricsMap.get(prompt.id)
-  const timeline = timelineMap.get(prompt.id)
   const heatBg = HEAT_BG[metrics?.heatmap_level ?? 'neutral']
 
   function handleDragStart(e: React.DragEvent) {
@@ -152,11 +122,6 @@ function TreeNode({
         >
           {collapsed ? '▶' : '▼'}
         </button>
-
-        {/* Sparkline for parent nodes */}
-        {hasChildren && timeline && timeline.length > 0 && (
-          <Sparkline data={timeline} />
-        )}
 
         {/* Connector line */}
         {depth > 0 && (
@@ -284,7 +249,6 @@ function TreeNode({
           onPermanentDelete={onPermanentDelete}
           onDrop={onDrop}
           metricsMap={metricsMap}
-          timelineMap={timelineMap}
           isCollapsed={isCollapsed}
           onToggleCollapse={onToggleCollapse}
         />
@@ -306,7 +270,7 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
   const [archivedPrompts, setArchivedPrompts] = useState<Prompt[]>([])
   const [archivedLoadKey, setArchivedLoadKey] = useState(0)
 
-  const { metricsMap, timelineMap, refresh: refreshMetrics } = useTreeMetrics(projectId)
+  const { metricsMap, refresh: refreshMetrics } = useTreeMetrics(projectId)
   const { isCollapsed, toggle: toggleCollapse } = useCollapseState(projectId)
 
   // Load archived prompts when filter needs them or when archive state changes
@@ -523,7 +487,6 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
                 onPermanentDelete={handlePermanentDelete}
                 onDrop={handleDrop}
                 metricsMap={metricsMap}
-                timelineMap={timelineMap}
                 isCollapsed={isCollapsed}
                 onToggleCollapse={toggleCollapse}
               />
