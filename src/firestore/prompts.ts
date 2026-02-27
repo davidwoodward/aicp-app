@@ -53,6 +53,13 @@ export async function listPromptsByProject(projectId: string): Promise<Prompt[]>
     .filter((p) => !p.deleted_at);
 }
 
+export async function listAllActivePrompts(): Promise<Prompt[]> {
+  const snapshot = await collection.orderBy("order_index", "asc").get();
+  return snapshot.docs
+    .map((doc) => doc.data() as Prompt)
+    .filter((p) => !p.deleted_at);
+}
+
 export async function listDeletedPromptsByProject(projectId: string): Promise<Prompt[]> {
   const snapshot = await collection
     .where("project_id", "==", projectId)

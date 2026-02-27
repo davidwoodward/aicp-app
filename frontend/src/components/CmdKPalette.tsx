@@ -1,17 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { projects as projectsApi } from '../api'
-import type { Project } from '../api'
+import { projects as projectsApi, prompts as promptsApi, snippets as snippetsApi } from '../api'
+import type { Project, Prompt, Snippet } from '../api'
 
 interface Props {
   onClose: () => void
+  onPromptSelect: (promptId: string, projectId: string) => void
+  onSnippetSelect: (snippetId: string) => void
 }
 
 interface ResultItem {
   id: string
   label: string
   description?: string
-  group: 'command' | 'project'
+  group: 'command' | 'project' | 'prompt' | 'snippet'
   action: () => void
 }
 
@@ -23,21 +25,27 @@ const STATIC_COMMANDS: Omit<ResultItem, 'action'>[] = [
 const GROUP_LABEL: Record<ResultItem['group'], string> = {
   command:      'Commands',
   project:      'Projects',
+  prompt:       'Prompts',
+  snippet:      'Snippets',
 }
 
-export default function CmdKPalette({ onClose }: Props) {
+export default function CmdKPalette({ onClose, onPromptSelect, onSnippetSelect }: Props) {
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   const [query, setQuery] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
+  const [allPrompts, setAllPrompts] = useState<Prompt[]>([])
+  const [allSnippets, setAllSnippets] = useState<Snippet[]>([])
   const [selectedIdx, setSelectedIdx] = useState(0)
 
   // Focus input on mount, load data
   useEffect(() => {
     inputRef.current?.focus()
     projectsApi.list().then(setProjects).catch(() => {})
+    promptsApi.listAll().then(setAllPrompts).catch(() => {})
+    snippetsApi.list().then(setAllSnippets).catch(() => {})
   }, [])
 
   const buildResults = useCallback((): ResultItem[] => {
@@ -65,8 +73,30 @@ export default function CmdKPalette({ onClose }: Props) {
         action: () => { navigate(`/projects/${p.id}/prompts`); onClose() },
       }))
 
-    return [...commands, ...projectItems]
-  }, [query, projects, navigate, onClose])
+    const promptItems: ResultItem[] = allPrompts
+      .filter(p => !q || p.title.toLowerCase().includes(q) || p.body.toLowerCase().includes(q))
+      .slice(0, 5)
+      .map(p => ({
+        id: `prompt-${p.id}`,
+        label: p.title || '(untitled prompt)',
+        description: p.body.slice(0, 80),
+        group: 'prompt' as const,
+        action: () => { onPromptSelect(p.id, p.project_id); onClose() },
+      }))
+
+    const snippetItems: ResultItem[] = allSnippets
+      .filter(s => !q || s.name.toLowerCase().includes(q) || s.content.toLowerCase().includes(q))
+      .slice(0, 5)
+      .map(s => ({
+        id: `snippet-${s.id}`,
+        label: s.name || '(untitled snippet)',
+        description: s.content.slice(0, 80),
+        group: 'snippet' as const,
+        action: () => { onSnippetSelect(s.id); onClose() },
+      }))
+
+    return [...commands, ...projectItems, ...promptItems, ...snippetItems]
+  }, [query, projects, allPrompts, allSnippets, navigate, onClose, onPromptSelect, onSnippetSelect])
 
   const results = buildResults()
 
@@ -94,7 +124,7 @@ export default function CmdKPalette({ onClose }: Props) {
   }
 
   // Group results for rendering
-  const groupedOrder: ResultItem['group'][] = ['command', 'project']
+  const groupedOrder: ResultItem['group'][] = ['command', 'project', 'prompt', 'snippet']
   const grouped = groupedOrder
     .map(g => ({ group: g, items: results.filter(r => r.group === g) }))
     .filter(g => g.items.length > 0)
@@ -132,7 +162,7 @@ export default function CmdKPalette({ onClose }: Props) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search commands, projects…"
+            placeholder="Search commands, projects, prompts, snippets…"
             style={{
               flex: 1,
               background: 'none',
@@ -207,7 +237,7 @@ export default function CmdKPalette({ onClose }: Props) {
                       >
                         {/* Group icon */}
                         <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', flexShrink: 0, width: '16px', textAlign: 'center' }}>
-                          {group === 'command' ? '›' : '◫'}
+                          {group === 'command' ? '›' : group === 'project' ? '◫' : group === 'prompt' ? '¶' : '✂'}
                         </span>
 
                         <span
