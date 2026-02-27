@@ -27,9 +27,7 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
   const initialLoad = useRef(true)
   const contentRef = useRef<HTMLTextAreaElement>(null)
   const isNewSnippet = useRef(false)
@@ -101,16 +99,6 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
 
     onClose()
   }, [name, content, snippet, snippetId, onClose])
-
-  // Close menu on click outside
-  useEffect(() => {
-    if (!menuOpen) return
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [menuOpen])
 
   // Escape to close
   useEffect(() => {
@@ -203,6 +191,29 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
         >
           {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : ''}
         </span>
+
+        <button
+          onClick={async () => {
+            if (archiving) return
+            if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+            setArchiving(true)
+            try {
+              await snippetsApi.delete(snippetId)
+              onClose()
+            } catch {
+              setArchiving(false)
+            }
+          }}
+          disabled={archiving}
+          className="flex items-center px-1 py-0.5 rounded hover:bg-surface-2 transition-colors"
+          style={{ flexShrink: 0, opacity: archiving ? 0.5 : 1 }}
+          title="Delete snippet"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
       </div>
 
       {/* Body */}
@@ -223,77 +234,6 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
         />
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-t border-border shrink-0">
-        <div ref={menuRef} style={{ position: 'relative' }}>
-          <button
-            onClick={() => setMenuOpen(v => !v)}
-            style={{
-              fontSize: '12px',
-              color: 'var(--color-text-muted)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '0 2px',
-              lineHeight: 1,
-              fontFamily: 'var(--font-mono)',
-            }}
-            title="Snippet actions"
-          >
-            &#x22EF;
-          </button>
-
-          {menuOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                left: 0,
-                bottom: '100%',
-                marginBottom: '4px',
-                zIndex: 40,
-                minWidth: '140px',
-                background: 'var(--color-surface-2)',
-                border: '1px solid var(--color-border-bright)',
-                borderRadius: '6px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                padding: '4px 0',
-              }}
-            >
-              <button
-                onClick={async () => {
-                  setMenuOpen(false)
-                  if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
-                  setArchiving(true)
-                  try {
-                    await snippetsApi.delete(snippetId)
-                    onClose()
-                  } catch {
-                    setArchiving(false)
-                  }
-                }}
-                disabled={archiving}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '6px 12px',
-                  fontSize: '11px',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--color-danger)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: archiving ? 'default' : 'pointer',
-                  opacity: archiving ? 0.5 : 1,
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.08)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-              >
-                {archiving ? 'Archiving...' : 'Delete Snippet'}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   )
 }
