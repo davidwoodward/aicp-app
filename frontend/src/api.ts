@@ -177,6 +177,7 @@ export const projects = {
 
 export const prompts = {
   list: (projectId: string) => request<Prompt[]>(`/prompts?project_id=${projectId}`),
+  listAll: () => request<Prompt[]>('/prompts'),
   listDeleted: (projectId: string) => request<Prompt[]>(`/prompts/deleted?project_id=${projectId}`),
   create: (data: {
     project_id: string;

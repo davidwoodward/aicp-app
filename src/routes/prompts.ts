@@ -3,6 +3,7 @@ import {
   createPrompt,
   getPrompt,
   listPromptsByProject,
+  listAllActivePrompts,
   listDeletedPromptsByProject,
   updatePrompt,
   updatePromptStatus,
@@ -194,11 +195,11 @@ export function registerPromptRoutes(app: FastifyInstance) {
   app.get("/prompts", async (req, reply) => {
     const { project_id } = req.query as { project_id?: string };
 
-    if (!project_id) {
-      return reply.status(400).send({ error: "project_id query parameter is required" });
+    if (project_id) {
+      return listPromptsByProject(project_id);
     }
 
-    return listPromptsByProject(project_id);
+    return listAllActivePrompts();
   });
 
   app.get("/prompts/deleted", async (req, reply) => {

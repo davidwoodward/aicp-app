@@ -260,7 +260,18 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
       </div>
 
       {/* Cmd+K palette overlay */}
-      {cmdkOpen && <CmdKPalette onClose={() => setCmdkOpen(false)} />}
+      {cmdkOpen && (
+        <CmdKPalette
+          onClose={() => setCmdkOpen(false)}
+          onPromptSelect={(promptId, projectId) => {
+            setSelectedProject(projectId)
+            handlePromptSelect(promptId)
+          }}
+          onSnippetSelect={(snippetId) => {
+            handleSnippetSelect(snippetId)
+          }}
+        />
+      )}
 
       {/* Recently Deleted panel */}
       {deletedPanelOpen && (
