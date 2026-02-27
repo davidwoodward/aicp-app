@@ -8,6 +8,8 @@ import RecentlyDeletedPanel from './RecentlyDeletedPanel'
 import SnippetEditor from './SnippetEditor'
 import SnippetManagementPanel from './SnippetManagementPanel'
 import SettingsEditor from './SettingsEditor'
+import ProfileEditor from './ProfileEditor'
+import ModelsEditor from './ModelsEditor'
 import ResizeHandle from './ResizeHandle'
 import { settings as settingsApi, snippets as snippetsApi } from '../api'
 import type { RefineMode, ActivityLog, Prompt } from '../api'
@@ -25,6 +27,8 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
   const [deletedPanelOpen, setDeletedPanelOpen] = useState(false)
   const [snippetManagerOpen, setSnippetManagerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [modelsOpen, setModelsOpen] = useState(false)
   const [navKey, setNavKey] = useState(0)
   const [promptRefreshKey, setPromptRefreshKey] = useState(0)
   const [snippetRefreshKey, setSnippetRefreshKey] = useState(0)
@@ -131,6 +135,24 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
 
   function handleOpenSettings() {
     setSettingsOpen(true)
+    setProfileOpen(false)
+    setModelsOpen(false)
+    setEditingSnippetId(null)
+    setActivePromptId(null)
+  }
+
+  function handleOpenProfile() {
+    setProfileOpen(true)
+    setModelsOpen(false)
+    setSettingsOpen(false)
+    setEditingSnippetId(null)
+    setActivePromptId(null)
+  }
+
+  function handleOpenModels() {
+    setModelsOpen(true)
+    setProfileOpen(false)
+    setSettingsOpen(false)
     setEditingSnippetId(null)
     setActivePromptId(null)
   }
@@ -182,7 +204,9 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
         onCmdK={() => setCmdkOpen(true)}
         onOpenDeleted={() => setDeletedPanelOpen(true)}
         onOpenSettings={handleOpenSettings}
-        onPromptsClick={() => { setActivePromptId(null); setEditingSnippetId(null); setSettingsOpen(false) }}
+        onPromptsClick={() => { setActivePromptId(null); setEditingSnippetId(null); setSettingsOpen(false); setProfileOpen(false); setModelsOpen(false) }}
+        onOpenProfile={handleOpenProfile}
+        onOpenModels={handleOpenModels}
       />
 
       {/* ── Three-panel body ─────────────────────────────────────── */}
@@ -209,9 +233,13 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
 
         <ResizeHandle onResize={handleLeftResize} onResizeEnd={handleLeftResizeEnd} />
 
-        {/* Center — Settings / Snippet editor / Chat */}
+        {/* Center — Profile / Models / Settings / Snippet editor / Chat */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          {settingsOpen ? (
+          {profileOpen ? (
+            <ProfileEditor onClose={() => setProfileOpen(false)} />
+          ) : modelsOpen ? (
+            <ModelsEditor onClose={() => setModelsOpen(false)} />
+          ) : settingsOpen ? (
             <SettingsEditor
               refineMode={refineMode}
               refineSystemPrompt={refineSystemPrompt}
