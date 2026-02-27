@@ -185,8 +185,8 @@ export const prompts = {
     order_index: number;
     parent_prompt_id?: string | null;
   }) => request<Prompt>('/prompts', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: Record<string, unknown>) =>
-    request<Prompt>(`/prompts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  update: (id: string, data: Record<string, unknown>, opts?: { skipLog?: boolean }) =>
+    request<Prompt>(`/prompts/${id}${opts?.skipLog ? '?skip_log=true' : ''}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<void>(`/prompts/${id}`, { method: 'DELETE' }),
   restore: (id: string) =>
@@ -368,6 +368,8 @@ export const activityLogs = {
     const qs = params.toString();
     return request<PaginatedLogs>(`/activity-logs${qs ? `?${qs}` : ''}`);
   },
+  delete: (eventId: string) =>
+    request<{ deleted: boolean }>(`/activity-logs/${eventId}`, { method: 'DELETE' }),
   diff: (eventId: string) =>
     request<DiffResponse>(`/logs/${eventId}/diff`),
   restore: async (eventId: string, force?: boolean): Promise<RestoreResult> => {

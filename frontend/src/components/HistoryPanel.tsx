@@ -9,6 +9,9 @@ import { useError } from '../hooks/useError'
 
 interface Props {
   projectId: string
+  entityId?: string
+  currentPrompt?: Prompt | null
+  onView: (log: ActivityLog) => void
   onRestore: (prompt: Prompt) => void
   onDismiss: () => void
 }
@@ -55,35 +58,36 @@ function timeAgo(iso: string): string {
   return `${days}d ago`
 }
 
-export default function HistoryPanel({ projectId, onRestore, onDismiss }: Props) {
+export default function HistoryPanel({ projectId, entityId, onView, onRestore, onDismiss }: Props) {
   const { showError } = useError()
   const [logs, setLogs] = useState<ActivityLog[]>([])
   const [loading, setLoading] = useState(true)
   const [restoringId, setRestoringId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
-    activityLogs.list({
+    const filters: { project_id: string; entity_type: 'prompt'; entity_id?: string; limit: number } = {
       project_id: projectId,
       entity_type: 'prompt',
       limit: 30,
-    })
+    }
+    if (entityId) filters.entity_id = entityId
+    activityLogs.list(filters)
       .then(res => setLogs(res.logs))
       .catch(() => setLogs([]))
       .finally(() => setLoading(false))
-  }, [projectId])
+  }, [projectId, entityId])
 
   async function handleRestore(log: ActivityLog) {
     setRestoringId(log.id)
     try {
       const result = await activityLogs.restore(log.id)
-      // Refetch the updated prompt
       const updated = result.entity as unknown as Prompt
       if (updated?.id) {
         onRestore(updated)
       }
     } catch (err) {
       if (err instanceof RestoreConflictError) {
-        // Force restore on conflict
         try {
           const result = await activityLogs.restore(log.id, true)
           const updated = result.entity as unknown as Prompt
@@ -99,17 +103,25 @@ export default function HistoryPanel({ projectId, onRestore, onDismiss }: Props)
     }
   }
 
-  // Only show restorable entries (updates, status changes — not creates/deletes/reorders)
-  const restorable = new Set(['update', 'status_change'])
+  async function handleDelete(log: ActivityLog) {
+    setDeletingId(log.id)
+    try {
+      await activityLogs.delete(log.id)
+      setLogs(prev => prev.filter(l => l.id !== log.id))
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Delete failed')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const viewable = new Set(['update', 'status_change'])
 
   return (
-    <div
-      className="rounded-lg border overflow-hidden"
-      style={{ background: 'var(--color-surface-1)', borderColor: 'var(--color-border)' }}
-    >
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-2"
+        className="flex items-center justify-between px-3 py-2 shrink-0"
         style={{ borderBottom: '1px solid var(--color-border)' }}
       >
         <span
@@ -133,7 +145,7 @@ export default function HistoryPanel({ projectId, onRestore, onDismiss }: Props)
       </div>
 
       {loading ? (
-        <div className="px-4 py-6 text-center">
+        <div className="px-3 py-6 text-center">
           <div className="typing-indicator" style={{ justifyContent: 'center' }}>
             <span className="dot" />
             <span className="dot" />
@@ -141,60 +153,79 @@ export default function HistoryPanel({ projectId, onRestore, onDismiss }: Props)
           </div>
         </div>
       ) : logs.length === 0 ? (
-        <div className="px-4 py-8 text-center text-text-muted text-xs font-mono">
+        <div className="px-3 py-8 text-center text-text-muted text-xs font-mono">
           No edit history for this project.
         </div>
       ) : (
-        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-          {logs.map(log => (
-            <div
-              key={log.id}
-              className="flex items-start gap-3 px-4 py-2.5"
-              style={{ borderBottom: '1px solid var(--color-border)' }}
-            >
-              {/* Timeline dot */}
-              <div className="pt-1 shrink-0">
-                <div
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: log.action_type === 'delete'
-                      ? 'var(--color-danger)'
-                      : log.action_type === 'create'
-                        ? 'var(--color-accent)'
-                        : 'var(--color-text-muted)',
-                  }}
-                />
-              </div>
+        <div className="flex-1 overflow-y-auto">
+          {logs.map(log => {
+            const canView = viewable.has(log.action_type) && log.metadata.before_state
+            const canRestore = canView
 
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-mono text-text-primary leading-relaxed">
-                  {summarize(log)}
+            return (
+              <div
+                key={log.id}
+                className="px-3 py-2"
+                style={{ borderBottom: '1px solid var(--color-border)' }}
+              >
+                {/* Summary + time */}
+                <div className="flex items-start gap-2">
+                  <div
+                    className="mt-1.5 shrink-0"
+                    style={{
+                      width: '5px',
+                      height: '5px',
+                      borderRadius: '50%',
+                      background: log.action_type === 'delete'
+                        ? 'var(--color-danger)'
+                        : log.action_type === 'create'
+                          ? 'var(--color-accent)'
+                          : 'var(--color-text-muted)',
+                    }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="text-[11px] font-mono text-text-primary leading-snug"
+                      style={{ wordBreak: 'break-word' }}
+                    >
+                      {summarize(log)}
+                    </div>
+                    <div className="text-[9px] font-mono text-text-muted mt-0.5">
+                      {timeAgo(log.created_at)}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] font-mono text-text-muted">
-                    {timeAgo(log.created_at)}
-                  </span>
-                  <span className="text-[10px] font-mono text-text-muted">
-                    {new Date(log.created_at).toLocaleString()}
-                  </span>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-1.5 mt-1.5 pl-3.5">
+                  {canView && (
+                    <button
+                      onClick={() => onView(log)}
+                      className="px-1.5 py-0.5 text-[9px] font-mono font-medium text-text-muted hover:text-accent border border-border rounded hover:border-accent/30 transition-colors"
+                    >
+                      View
+                    </button>
+                  )}
+                  {canRestore && (
+                    <button
+                      onClick={() => handleRestore(log)}
+                      disabled={restoringId === log.id}
+                      className="px-1.5 py-0.5 text-[9px] font-mono font-medium text-text-muted hover:text-accent border border-border rounded hover:border-accent/30 transition-colors disabled:opacity-50"
+                    >
+                      {restoringId === log.id ? '...' : 'Restore'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDelete(log)}
+                    disabled={deletingId === log.id}
+                    className="px-1.5 py-0.5 text-[9px] font-mono font-medium text-text-muted hover:text-red-400 border border-border rounded hover:border-red-400/30 transition-colors disabled:opacity-50"
+                  >
+                    {deletingId === log.id ? '...' : 'Delete'}
+                  </button>
                 </div>
               </div>
-
-              {/* Restore button */}
-              {restorable.has(log.action_type) && log.metadata.before_state && (
-                <button
-                  onClick={() => handleRestore(log)}
-                  disabled={restoringId === log.id}
-                  className="shrink-0 px-2 py-1 text-[10px] font-mono font-medium text-text-muted hover:text-accent border border-border rounded hover:border-accent/30 transition-colors disabled:opacity-50"
-                >
-                  {restoringId === log.id ? '...' : 'Restore'}
-                </button>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

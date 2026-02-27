@@ -91,3 +91,7 @@ export async function getActivityLog(id: string): Promise<ActivityLog | null> {
   if (!doc.exists) return null;
   return doc.data() as ActivityLog;
 }
+
+export async function deleteActivityLog(id: string): Promise<void> {
+  await collection.doc(id).delete();
+}

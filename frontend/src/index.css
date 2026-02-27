@@ -1,10 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'DM Sans', sans-serif;
-  --font-display: 'Syne', sans-serif;
+  --font-display: 'Outfit', sans-serif;
 
   --color-surface-0: #0a0a0f;
   --color-surface-1: #12121a;
@@ -133,3 +133,6 @@ button, a, [role="button"] { cursor: pointer; }
 
 /* Smooth scroll utility */
 .scroll-smooth { scroll-behavior: smooth; }
+
+/* Resize cursor (applied to body during drag) */
+.cursor-col-resize { cursor: col-resize !important; }

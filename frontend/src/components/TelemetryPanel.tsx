@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { models as modelsApi, projects as projectsApi } from '../api'
-import type { Project, RefineMode } from '../api'
+import type { Project, Prompt, ActivityLog, RefineMode } from '../api'
+import HistoryPanel from './HistoryPanel'
 
 interface Props {
   provider: string
@@ -9,6 +10,13 @@ interface Props {
   selectedProject: string | null
   refineMode: RefineMode
   onRefineModeToggle: () => void
+  historyProjectId?: string | null
+  historyEntityId?: string
+  historyRefreshKey?: number
+  currentPrompt?: Prompt | null
+  onHistoryView?: (log: ActivityLog) => void
+  onHistoryRestore?: (prompt: Prompt) => void
+  onHistoryDismiss?: () => void
 }
 
 interface ConnectedAgent {
@@ -47,7 +55,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-export default function TelemetryPanel({ provider, model, onModelChange, selectedProject, refineMode, onRefineModeToggle }: Props) {
+export default function TelemetryPanel({ provider, model, onModelChange, selectedProject, refineMode, onRefineModeToggle, historyProjectId, historyEntityId, historyRefreshKey, currentPrompt, onHistoryView, onHistoryRestore, onHistoryDismiss }: Props) {
   const [agents, setAgents] = useState<ConnectedAgent[]>([])
   const [projectName, setProjectName] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -152,36 +160,52 @@ export default function TelemetryPanel({ provider, model, onModelChange, selecte
       {/* Divider */}
       <div className="mx-2 border-t border-border" />
 
-      {/* ── AGENTS ─────────────────────────────────── */}
-      <SectionLabel>Agents</SectionLabel>
+      {/* ── HISTORY (replaces Agents when open) or AGENTS ── */}
+      {historyProjectId && onHistoryView && onHistoryRestore && onHistoryDismiss ? (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <HistoryPanel
+            key={historyRefreshKey}
+            projectId={historyProjectId}
+            entityId={historyEntityId}
+            currentPrompt={currentPrompt}
+            onView={onHistoryView}
+            onRestore={onHistoryRestore}
+            onDismiss={onHistoryDismiss}
+          />
+        </div>
+      ) : (
+        <>
+          <SectionLabel>Agents</SectionLabel>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
-        {agents.length === 0 ? (
-          <div className="py-2" style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
-            None connected
+          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
+            {agents.length === 0 ? (
+              <div className="py-2" style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                None connected
+              </div>
+            ) : (
+              agents.map(agent => (
+                <div
+                  key={agent.agent_id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded"
+                  style={{ background: 'var(--color-surface-1)', border: '1px solid var(--color-border)' }}
+                >
+                  <span
+                    style={{
+                      width: '6px', height: '6px', borderRadius: '50%',
+                      background: 'var(--color-accent)',
+                      flexShrink: 0,
+                      display: 'inline-block',
+                    }}
+                  />
+                  <span className="flex-1 truncate" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>
+                    {agent.agent_id.slice(0, 16)}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
-        ) : (
-          agents.map(agent => (
-            <div
-              key={agent.agent_id}
-              className="flex items-center gap-2 px-2 py-1.5 rounded"
-              style={{ background: 'var(--color-surface-1)', border: '1px solid var(--color-border)' }}
-            >
-              <span
-                style={{
-                  width: '6px', height: '6px', borderRadius: '50%',
-                  background: 'var(--color-accent)',
-                  flexShrink: 0,
-                  display: 'inline-block',
-                }}
-              />
-              <span className="flex-1 truncate" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>
-                {agent.agent_id.slice(0, 16)}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
+        </>
+      )}
     </div>
   )
 }

@@ -23,7 +23,7 @@ interface Props {
   prompt: Prompt
   agents: Agent[]
   onUpdate: (prompt: Prompt) => void
-  onNavigateHistory: () => void
+  onNavigateHistory?: () => void
   onClose?: () => void
   autoRefine?: boolean
   onRefineDismiss?: () => void
@@ -35,6 +35,7 @@ interface Props {
   provider?: string
   model?: string
   previewLines?: number
+  historySnapshotDelay?: number
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -66,7 +67,7 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory, onClose, autoRefine, onRefineDismiss, onInsertSnippet, pendingSnippetContent, onSnippetInserted, initialEdit, fillHeight, provider, model, previewLines }: Props) {
+export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory, onClose, autoRefine, onRefineDismiss, onInsertSnippet, pendingSnippetContent, onSnippetInserted, initialEdit, fillHeight, provider, model, previewLines, historySnapshotDelay }: Props) {
   const { showError } = useError()
   const [refining, setRefining] = useState(!!initialEdit)
   const [expanded, setExpanded] = useState(false)
@@ -110,11 +111,27 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
   const [aiRefining, setAiRefining] = useState(false)
   const [output, setOutput] = useState<{ label: string; detail: string } | null>(null)
 
-  // Auto-save with debounce
+  // --- History throttle: 20s timer + baseline tracking ---
+  const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const historyBaseline = useRef<{ title: string; body: string }>({ title: prompt.title, body: prompt.body })
+
+  // Reset baseline when prompt changes
+  useEffect(() => {
+    historyBaseline.current = { title: prompt.title, body: prompt.body }
+  }, [prompt.id])
+
+  const flushHistory = useCallback((t: string, b: string) => {
+    const base = historyBaseline.current
+    if (t === base.title && b === base.body) return
+    historyBaseline.current = { title: t, body: b }
+    promptsApi.update(prompt.id, { title: t, body: b }).catch(() => {})
+  }, [prompt.id])
+
+  // Auto-save with debounce (skipLog — no history entry)
   const doAutoSave = useCallback(async (t: string, b: string) => {
     setSaveStatus('saving')
     try {
-      const updated = await promptsApi.update(prompt.id, { title: t, body: b })
+      const updated = await promptsApi.update(prompt.id, { title: t, body: b }, { skipLog: true })
       onUpdate(updated)
       setSaveStatus('saved')
     } catch {
@@ -122,6 +139,7 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
     }
   }, [prompt.id, onUpdate])
 
+  // Auto-save debounce (800ms) — saves without creating history entry
   useEffect(() => {
     if (initialLoad.current) return
     if (!refining) return
@@ -135,17 +153,36 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
     }
   }, [title, body, prompt.title, prompt.body, refining, doAutoSave])
 
-  // Flush pending save on unmount (e.g. navigating away)
+  // History snapshot timer — independent of auto-save, only resets on actual user edits
+  useEffect(() => {
+    if (initialLoad.current) return
+    if (!refining) return
+    const base = historyBaseline.current
+    if (title === base.title && body === base.body) return
+
+    if (historyTimer.current) clearTimeout(historyTimer.current)
+    historyTimer.current = setTimeout(() => flushHistory(title, body), (historySnapshotDelay ?? 20) * 1000)
+
+    return () => {
+      if (historyTimer.current) clearTimeout(historyTimer.current)
+    }
+  }, [title, body, refining, flushHistory, historySnapshotDelay])
+
+  // Flush pending save + history on unmount
   useEffect(() => {
     return () => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current)
         saveTimer.current = null
       }
+      if (historyTimer.current) {
+        clearTimeout(historyTimer.current)
+        historyTimer.current = null
+      }
     }
   }, [])
 
-  // Escape to close
+  // Escape to close — flush auto-save + history snapshot
   useEffect(() => {
     if (!onClose) return
     function handleKey(e: KeyboardEvent) {
@@ -154,9 +191,19 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
         if (saveTimer.current) {
           clearTimeout(saveTimer.current)
           saveTimer.current = null
-          if (title !== prompt.title || body !== prompt.body) {
-            promptsApi.update(prompt.id, { title, body }).then(onUpdate).catch(() => {})
-          }
+        }
+        // Flush history timer
+        if (historyTimer.current) {
+          clearTimeout(historyTimer.current)
+          historyTimer.current = null
+        }
+        // Final save with history if content changed from baseline
+        const base = historyBaseline.current
+        if (title !== base.title || body !== base.body) {
+          promptsApi.update(prompt.id, { title, body }).then(onUpdate).catch(() => {})
+        } else if (title !== prompt.title || body !== prompt.body) {
+          // Content changed from prompt but matches baseline — just save without log
+          promptsApi.update(prompt.id, { title, body }, { skipLog: true }).then(onUpdate).catch(() => {})
         }
         onClose!()
       }
@@ -470,12 +517,14 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
             </span>
           ) : 'Refine'}
         </button>
-        <button
-          onClick={onNavigateHistory}
-          className="px-3 py-1.5 text-[10px] font-mono font-medium text-text-muted hover:text-text-primary border border-border rounded hover:border-border-bright transition-colors"
-        >
-          History
-        </button>
+        {onNavigateHistory && (
+          <button
+            onClick={onNavigateHistory}
+            className="px-3 py-1.5 text-[10px] font-mono font-medium text-text-muted hover:text-text-primary border border-border rounded hover:border-border-bright transition-colors"
+          >
+            History
+          </button>
+        )}
         {onInsertSnippet && (
           <button
             onClick={onInsertSnippet}

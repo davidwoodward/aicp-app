@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { listActivityLogs, getActivityLog, EntityType } from "../middleware/activityLogger";
+import { listActivityLogs, getActivityLog, deleteActivityLog, EntityType } from "../middleware/activityLogger";
 import { computeDiff, type DiffResult } from "../services/diffEngine";
 import { parseDuration } from "../commands/grammarEngine";
 
@@ -79,5 +79,13 @@ export function registerActivityLogRoutes(app: FastifyInstance) {
     };
 
     return result;
+  });
+
+  app.delete("/activity-logs/:event_id", async (req, reply) => {
+    const { event_id } = req.params as { event_id: string };
+    const event = await getActivityLog(event_id);
+    if (!event) return reply.status(404).send({ error: "not found" });
+    await deleteActivityLog(event_id);
+    return { deleted: true };
   });
 }
