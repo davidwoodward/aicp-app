@@ -477,7 +477,7 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-t border-border shrink-0">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-t border-border shrink-0" onClick={e => e.stopPropagation()}>
         <button
           onClick={handleSave}
           disabled={saving || !refining}
