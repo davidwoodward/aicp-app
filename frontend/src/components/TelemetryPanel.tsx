@@ -55,6 +55,15 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
+declare const __BUILD_SHA__: string
+declare const __BUILD_TIME__: string
+
+const buildSha = typeof __BUILD_SHA__ !== 'undefined' ? __BUILD_SHA__ : 'dev'
+const buildTime = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : ''
+const buildLabel = buildTime
+  ? `${buildSha} · ${new Date(buildTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${new Date(buildTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`
+  : buildSha
+
 export default function TelemetryPanel({ provider, model, onModelChange, selectedProject, refineMode, onRefineModeToggle, historyProjectId, historyEntityId, historyRefreshKey, currentPrompt, onHistoryView, onHistoryRestore, onHistoryDismiss }: Props) {
   const [agents, setAgents] = useState<ConnectedAgent[]>([])
   const [projectName, setProjectName] = useState<string | null>(null)
@@ -155,6 +164,7 @@ export default function TelemetryPanel({ provider, model, onModelChange, selecte
           <Chip label="Refine" value={refineMode} accent />
         </div>
         <Chip label="Agent" value={agents.length > 0 ? agents[0].agent_id.slice(0, 12) : 'Not Connected'} accent={agents.length > 0} />
+        <Chip label="Build" value={buildLabel} />
       </div>
 
       {/* Divider */}
