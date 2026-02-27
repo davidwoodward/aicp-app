@@ -158,6 +158,15 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
           &#x2190;
         </button>
 
+        <span
+          style={{
+            fontSize: '13px', fontFamily: 'var(--font-mono)', fontWeight: 600,
+            color: 'var(--color-text-primary)', flexShrink: 0,
+          }}
+        >
+          Snippet Editor
+        </span>
+
         <input
           type="text"
           value={name}

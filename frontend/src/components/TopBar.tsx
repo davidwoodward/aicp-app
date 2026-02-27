@@ -5,9 +5,10 @@ interface Props {
   onCmdK?: () => void
   onOpenDeleted?: () => void
   onOpenSettings?: () => void
+  onPromptsClick?: () => void
 }
 
-export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings }: Props) {
+export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPromptsClick }: Props) {
   const location = useLocation()
   const isPrompts = location.pathname === '/'
   const isProjects = location.pathname.startsWith('/projects')
@@ -29,6 +30,7 @@ export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings }: Props)
 
       <Link
         to="/"
+        onClick={onPromptsClick}
         className={`transition-colors ${isPrompts ? 'text-accent' : 'text-text-muted hover:text-text-secondary'}`}
         style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', textDecoration: 'none' }}
       >
