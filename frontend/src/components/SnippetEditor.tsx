@@ -190,6 +190,25 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
         >
           {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : ''}
         </span>
+
+        <button
+          onClick={async () => {
+            if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+            try {
+              await snippetsApi.delete(snippetId)
+              onClose()
+            } catch { /* best-effort */ }
+          }}
+          style={{
+            fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '3px 10px',
+            borderRadius: '4px', background: 'none',
+            color: 'var(--color-text-muted)', border: '1px solid var(--color-border)',
+            cursor: 'pointer', flexShrink: 0,
+          }}
+          title="Archive snippet"
+        >
+          Archive
+        </button>
       </div>
 
       {/* Body */}
