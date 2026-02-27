@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { projects as projectsApi, prompts as promptsApi, snippets as snippetsApi, snippetCollections as collectionsApi } from '../api'
-import type { Project, Prompt, Snippet, SnippetCollection, PromptMetrics, DayActivity } from '../api'
+import type { Project, Prompt, Snippet, SnippetCollection, PromptMetrics } from '../api'
 import { useTreeMetrics } from '../hooks/useTreeMetrics'
 import DeleteProjectModal from './DeleteProjectModal'
 
@@ -12,6 +12,7 @@ interface Props {
   activeSnippetId?: string | null
   onSnippetSelect?: (id: string | null) => void
   onOpenSnippetManager?: () => void
+  onOpenHistory?: (projectId: string) => void
   promptRefreshKey?: number
   snippetRefreshKey?: number
 }
@@ -45,48 +46,6 @@ function maxHeatLevel(metrics: PromptMetrics[]): string {
     if ((HEAT_RANK[m.heatmap_level] ?? 0) > (HEAT_RANK[max] ?? 0)) max = m.heatmap_level
   }
   return max
-}
-
-function aggregateSparkline(timelines: Map<string, DayActivity[]>): number[] {
-  const dayCounts = new Map<string, number>()
-  for (const timeline of timelines.values()) {
-    for (const d of timeline) {
-      dayCounts.set(d.date, (dayCounts.get(d.date) ?? 0) + d.count)
-    }
-  }
-  const sorted = Array.from(dayCounts.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-7)
-    .map(([, count]) => count)
-  // Pad to 7 entries
-  while (sorted.length < 7) sorted.unshift(0)
-  return sorted
-}
-
-function Sparkline({ data }: { data: number[] }) {
-  const max = Math.max(...data, 1)
-  const W = 42
-  const H = 14
-  const barW = 5
-  const gap = 1
-  return (
-    <svg width={W} height={H} style={{ flexShrink: 0, opacity: 0.7 }}>
-      {data.map((v, i) => {
-        const barH = Math.max(1, Math.round((v / max) * H))
-        return (
-          <rect
-            key={i}
-            x={i * (barW + gap)}
-            y={H - barH}
-            width={barW}
-            height={barH}
-            fill={v > 0 ? 'var(--color-accent)' : 'var(--color-border)'}
-            rx={1}
-          />
-        )
-      })}
-    </svg>
-  )
 }
 
 function StatusDot({ status }: { status: string }) {
@@ -264,6 +223,7 @@ function ProjectEntry({
   onSelect,
   onReorder,
   onDelete,
+  onOpenHistory,
   activePromptId,
   onPromptSelect,
   onEnsureProjectSelected,
@@ -276,18 +236,18 @@ function ProjectEntry({
   onSelect: (id: string) => void
   onReorder: (projectId: string, prompts: Prompt[]) => void
   onDelete: (project: Project) => void
+  onOpenHistory?: (projectId: string) => void
   activePromptId?: string | null
   onPromptSelect?: (promptId: string | null) => void
   onEnsureProjectSelected?: (id: string) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const { metricsMap, timelineMap } = useTreeMetrics(isExpanded ? project.id : null)
+  const { metricsMap } = useTreeMetrics(isExpanded ? project.id : null)
 
   const projectPrompts = promptMap.get(project.id) ?? []
   const allMetrics = Array.from(metricsMap.values())
   const heat = maxHeatLevel(allMetrics)
-  const sparkData = aggregateSparkline(timelineMap)
   const rootPrompts = projectPrompts.filter(p => !p.parent_prompt_id)
 
   useEffect(() => {
@@ -354,11 +314,6 @@ function ProjectEntry({
           {project.name}
         </span>
 
-        {/* Sparkline — only shown when expanded and prompts loaded */}
-        {isExpanded && projectPrompts.length > 0 && (
-          <Sparkline data={sparkData} />
-        )}
-
         {/* Three-dot menu button */}
         <span
           ref={menuRef as React.RefObject<HTMLSpanElement>}
@@ -400,6 +355,29 @@ function ProjectEntry({
                 padding: '4px 0',
               }}
             >
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  setMenuOpen(false)
+                  onOpenHistory?.(project.id)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text-secondary)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-3)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+              >
+                History
+              </button>
               <button
                 onClick={e => {
                   e.stopPropagation()
@@ -461,7 +439,7 @@ function ProjectEntry({
   )
 }
 
-export default function NavPanel({ onProjectSelect, activePromptId, onPromptSelect, activeSnippetId, onSnippetSelect, onOpenSnippetManager, promptRefreshKey, snippetRefreshKey }: Props) {
+export default function NavPanel({ onProjectSelect, activePromptId, onPromptSelect, activeSnippetId, onSnippetSelect, onOpenSnippetManager, onOpenHistory, promptRefreshKey, snippetRefreshKey }: Props) {
   const navigate = useNavigate()
 
   const [projectList, setProjectList] = useState<Project[]>([])
@@ -586,6 +564,7 @@ export default function NavPanel({ onProjectSelect, activePromptId, onPromptSele
               onSelect={selectProject}
               onReorder={handleReorder}
               onDelete={setDeleteTarget}
+              onOpenHistory={onOpenHistory}
               activePromptId={activePromptId}
               onPromptSelect={onPromptSelect}
               onEnsureProjectSelected={ensureProjectSelected}
