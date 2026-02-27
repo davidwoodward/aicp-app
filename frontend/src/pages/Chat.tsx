@@ -33,11 +33,12 @@ interface SystemEntry {
 }
 
 export default function Chat({ provider, model, onModelChange }: Props) {
-  const outletCtx = useOutletContext<{ selectedProject?: string | null; setSelectedProject?: (id: string | null) => void; activePromptId?: string | null; setActivePromptId?: (id: string | null) => void; onPromptUpdated?: () => void; promptPreviewLines?: number; historySnapshotDelay?: number; viewingHistoryLog?: ActivityLog | null; clearViewingHistory?: () => void; historyPromptId?: string | null; setHistoryPromptId?: (id: string | null) => void } | null>()
+  const outletCtx = useOutletContext<{ selectedProject?: string | null; setSelectedProject?: (id: string | null) => void; activePromptId?: string | null; setActivePromptId?: (id: string | null) => void; onPromptUpdated?: () => void; onSnippetCreated?: () => void; promptPreviewLines?: number; historySnapshotDelay?: number; viewingHistoryLog?: ActivityLog | null; clearViewingHistory?: () => void; historyPromptId?: string | null; setHistoryPromptId?: (id: string | null) => void } | null>()
   const selectedProject = outletCtx?.selectedProject ?? null
   const activePromptId = outletCtx?.activePromptId ?? null
   const setActivePromptId = outletCtx?.setActivePromptId
   const onPromptUpdated = outletCtx?.onPromptUpdated
+  const onSnippetCreated = outletCtx?.onSnippetCreated
   const promptPreviewLines = outletCtx?.promptPreviewLines ?? 3
   const historySnapshotDelay = outletCtx?.historySnapshotDelay ?? 20
   const viewingHistoryLog = outletCtx?.viewingHistoryLog ?? null
@@ -209,7 +210,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
               name = breakIdx === -1 ? firstLine : firstLine.slice(0, breakIdx)
             }
             snippetsApi.create({ name, content })
-              .then(() => pushSystemEntry(`Created snippet "${name}"`))
+              .then(() => { pushSystemEntry(`Created snippet "${name}"`); onSnippetCreated?.() })
               .catch(err => showError(err instanceof Error ? err.message : 'Failed to create snippet'))
           }
         } else if (!activePromptId) {

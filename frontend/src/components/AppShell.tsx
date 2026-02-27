@@ -228,7 +228,7 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
               onClose={() => { setEditingSnippetId(null); setSnippetRefreshKey(k => k + 1) }}
             />
           ) : (
-            <Outlet context={{ selectedProject, setSelectedProject, activePromptId, setActivePromptId: handlePromptSelect, onPromptUpdated: () => setPromptRefreshKey(k => k + 1), promptPreviewLines, historySnapshotDelay, viewingHistoryLog, clearViewingHistory: () => setViewingHistoryLog(null), historyPromptId, setHistoryPromptId: openHistory }} />
+            <Outlet context={{ selectedProject, setSelectedProject, activePromptId, setActivePromptId: handlePromptSelect, onPromptUpdated: () => setPromptRefreshKey(k => k + 1), onSnippetCreated: () => setSnippetRefreshKey(k => k + 1), promptPreviewLines, historySnapshotDelay, viewingHistoryLog, clearViewingHistory: () => setViewingHistoryLog(null), historyPromptId, setHistoryPromptId: openHistory }} />
           )}
         </div>
 
