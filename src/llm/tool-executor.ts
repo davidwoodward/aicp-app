@@ -39,7 +39,7 @@ export async function executeTool(toolCall: ToolCall): Promise<string> {
     }
 
     case "list_snippets": {
-      const snippets = await listSnippets(args.collection_id || undefined);
+      const snippets = await listSnippets();
       return JSON.stringify(snippets);
     }
 
@@ -47,7 +47,6 @@ export async function executeTool(toolCall: ToolCall): Promise<string> {
       const snippet = await createSnippet({
         name: args.name,
         content: args.content,
-        collection_id: args.collection_id || null,
       });
       return JSON.stringify(snippet);
     }

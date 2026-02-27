@@ -7,6 +7,7 @@ import {
   updateProject,
   softDeleteProject,
   restoreProject,
+  hardDeleteProject,
 } from "../firestore/projects";
 import { listPromptsByProject } from "../firestore/prompts";
 import { listSessionsByProject } from "../firestore/sessions";
@@ -166,5 +167,30 @@ export function registerProjectRoutes(app: FastifyInstance) {
     });
 
     return { ...existing, deleted_at: null };
+  });
+
+  app.post("/projects/:id/permanent-delete", async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    const existing = await getProject(id);
+    if (!existing) {
+      return reply.status(404).send({ error: "project not found" });
+    }
+    if (!existing.deleted_at) {
+      return reply.status(400).send({ error: "project must be archived before permanent deletion" });
+    }
+
+    await hardDeleteProject(id);
+
+    await logActivity({
+      project_id: id,
+      entity_type: "project",
+      entity_id: id,
+      action_type: "delete",
+      metadata: { before_state: existing as unknown as Record<string, unknown>, after_state: null, permanent: true },
+      actor: "user",
+    });
+
+    return reply.status(204).send();
   });
 }

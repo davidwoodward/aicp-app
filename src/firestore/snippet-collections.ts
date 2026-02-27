@@ -6,16 +6,20 @@ export interface SnippetCollection {
   id: string;
   name: string;
   description: string;
+  snippet_ids: string[];
+  deleted_at: string | null;
   created_at: string;
 }
 
 export async function createSnippetCollection(
-  data: Omit<SnippetCollection, "id" | "created_at">
+  data: Omit<SnippetCollection, "id" | "created_at" | "snippet_ids" | "deleted_at">
 ): Promise<SnippetCollection> {
   const doc = collection.doc();
   const snippetCollection: SnippetCollection = {
     id: doc.id,
     ...data,
+    snippet_ids: [],
+    deleted_at: null,
     created_at: new Date().toISOString(),
   };
   await doc.set(snippetCollection);
@@ -29,10 +33,36 @@ export async function getSnippetCollection(id: string): Promise<SnippetCollectio
 }
 
 export async function listSnippetCollections(): Promise<SnippetCollection[]> {
-  const snapshot = await collection.orderBy("created_at", "desc").get();
+  const snapshot = await collection
+    .where("deleted_at", "==", null)
+    .orderBy("created_at", "desc")
+    .get();
   return snapshot.docs.map((doc) => doc.data() as SnippetCollection);
 }
 
-export async function deleteSnippetCollection(id: string): Promise<void> {
+export async function listDeletedSnippetCollections(): Promise<SnippetCollection[]> {
+  const snapshot = await collection
+    .where("deleted_at", "!=", null)
+    .orderBy("deleted_at", "desc")
+    .get();
+  return snapshot.docs.map((doc) => doc.data() as SnippetCollection);
+}
+
+export async function updateSnippetCollection(
+  id: string,
+  data: Partial<Pick<SnippetCollection, "name" | "description" | "snippet_ids">>
+): Promise<void> {
+  await collection.doc(id).update(data);
+}
+
+export async function softDeleteSnippetCollection(id: string): Promise<void> {
+  await collection.doc(id).update({ deleted_at: new Date().toISOString() });
+}
+
+export async function restoreSnippetCollection(id: string): Promise<void> {
+  await collection.doc(id).update({ deleted_at: null });
+}
+
+export async function hardDeleteSnippetCollection(id: string): Promise<void> {
   await collection.doc(id).delete();
 }
