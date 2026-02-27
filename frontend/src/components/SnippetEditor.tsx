@@ -27,6 +27,7 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [archiving, setArchiving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialLoad = useRef(true)
   const contentRef = useRef<HTMLTextAreaElement>(null)
@@ -192,28 +193,55 @@ export default function SnippetEditor({ snippetId, onClose }: Props) {
           {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : ''}
         </span>
 
-        <button
-          onClick={async () => {
-            if (archiving) return
-            if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
-            setArchiving(true)
-            try {
-              await snippetsApi.delete(snippetId)
-              onClose()
-            } catch {
-              setArchiving(false)
-            }
-          }}
-          disabled={archiving}
-          className="flex items-center px-1 py-0.5 rounded hover:bg-surface-2 transition-colors"
-          style={{ flexShrink: 0, opacity: archiving ? 0.5 : 1 }}
-          title="Delete snippet"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
-        </button>
+        {confirmDelete ? (
+          <span className="flex items-center gap-1.5" style={{ flexShrink: 0 }}>
+            <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>Delete?</span>
+            <button
+              disabled={archiving}
+              onClick={async () => {
+                if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+                setArchiving(true)
+                try {
+                  await snippetsApi.delete(snippetId)
+                  onClose()
+                } catch {
+                  setArchiving(false)
+                  setConfirmDelete(false)
+                }
+              }}
+              style={{
+                fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '2px 8px',
+                borderRadius: '4px', background: archiving ? 'var(--color-surface-2)' : 'rgba(239, 68, 68, 0.8)',
+                color: '#fff', border: 'none', cursor: archiving ? 'default' : 'pointer',
+              }}
+            >
+              {archiving ? 'Deleting...' : 'Yes'}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              style={{
+                fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '2px 8px',
+                borderRadius: '4px', background: 'none',
+                color: 'var(--color-text-muted)', border: '1px solid var(--color-border)',
+                cursor: 'pointer',
+              }}
+            >
+              No
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="flex items-center px-1 py-0.5 rounded hover:bg-surface-2 transition-colors"
+            style={{ flexShrink: 0 }}
+            title="Delete snippet"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Body */}
