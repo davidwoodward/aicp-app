@@ -19,25 +19,38 @@ export default function Login() {
   }, [loginWithCredential])
 
   useEffect(() => {
-    if (initialized.current) return
-    if (!window.google || !GOOGLE_CLIENT_ID || !buttonRef.current) return
+    if (initialized.current || !GOOGLE_CLIENT_ID || !buttonRef.current) return
 
-    initialized.current = true
+    function tryInit() {
+      if (!window.google || !buttonRef.current) return false
 
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleCredentialResponse,
-      auto_select: true,
-    })
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleCredentialResponse,
+        auto_select: true,
+      })
 
-    window.google.accounts.id.renderButton(buttonRef.current, {
-      theme: 'outline',
-      size: 'large',
-      type: 'standard',
-      shape: 'rectangular',
-      text: 'signin_with',
-      width: 280,
-    })
+      window.google.accounts.id.renderButton(buttonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        type: 'standard',
+        shape: 'rectangular',
+        text: 'signin_with',
+        width: 280,
+      })
+
+      initialized.current = true
+      return true
+    }
+
+    // GSI script loads async — poll until ready
+    if (tryInit()) return
+
+    const interval = setInterval(() => {
+      if (tryInit()) clearInterval(interval)
+    }, 100)
+
+    return () => clearInterval(interval)
   }, [handleCredentialResponse])
 
   return (

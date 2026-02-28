@@ -48,6 +48,9 @@ export async function authHook(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
+  // Only enforce auth on /api/* routes
+  if (!request.url.startsWith("/api/")) return;
+
   // Skip auth for health check and login
   if (request.url === "/api/health" && request.method === "GET") return;
   if (request.url === "/api/auth/login" && request.method === "POST") return;
