@@ -1,6 +1,9 @@
+import { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
 import AvatarDropdown from './AvatarDropdown'
+
+const isDev = import.meta.env.DEV
 
 interface Props {
   onCmdK?: () => void
@@ -16,10 +19,17 @@ export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPrompt
   const isPrompts = location.pathname === '/'
   const isProjects = location.pathname.startsWith('/projects')
 
+  // Swap favicon to red in dev mode
+  useEffect(() => {
+    if (!isDev) return
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (link) link.href = '/aicp-icon-dev.svg'
+  }, [])
+
   return (
     <header
-      className="flex items-center gap-3 px-3 shrink-0 border-b border-border bg-surface-1"
-      style={{ height: '36px' }}
+      className="flex items-center gap-3 px-3 shrink-0 border-b bg-surface-1"
+      style={{ height: '36px', borderColor: isDev ? '#dc2626' : undefined, borderBottomWidth: isDev ? '2px' : undefined }}
     >
       <span
         className="flex items-center gap-1.5 text-accent tracking-widest select-none"

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateA
 import { prompts as api, type Prompt } from '../api'
 import type { PromptMetrics } from '../api'
 import StatusBadge from '../components/StatusBadge'
+import { StatusFilter, filterPromptsByStatus, type StatusFilterValue } from '../components/StatusFilter'
 import { useTreeMetrics } from '../hooks/useTreeMetrics'
 import { useCollapseState } from '../hooks/useCollapseState'
 
@@ -267,6 +268,7 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
   const [saving, setSaving] = useState(false)
   const [rootDropOver, setRootDropOver] = useState(false)
   const [filter, setFilter] = useState<PromptFilter>('active')
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('draft+ready')
   const [archivedPrompts, setArchivedPrompts] = useState<Prompt[]>([])
   const [archivedLoadKey, setArchivedLoadKey] = useState(0)
 
@@ -280,11 +282,14 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
     }
   }, [filter, projectId, archivedLoadKey])
 
-  const displayPrompts = filter === 'active'
+  const basePrompts = filter === 'active'
     ? prompts
     : filter === 'archived'
       ? archivedPrompts
       : [...prompts, ...archivedPrompts]
+  const displayPrompts = filter === 'active'
+    ? filterPromptsByStatus(basePrompts, statusFilter)
+    : basePrompts
   const roots = buildTree(displayPrompts, null)
 
   const handleDrop = useCallback(async (draggedId: string, targetId: string | null) => {
@@ -435,6 +440,12 @@ export default function PromptTree({ projectId, prompts, setPrompts }: Props) {
                 </button>
               ))}
             </div>
+            {filter === 'active' && (
+              <>
+                <div style={{ width: '1px', height: '16px', background: 'var(--color-border)', flexShrink: 0, marginLeft: '4px', marginRight: '4px' }} />
+                <StatusFilter value={statusFilter} onChange={setStatusFilter} />
+              </>
+            )}
           </div>
           {filter === 'active' && (
             <button

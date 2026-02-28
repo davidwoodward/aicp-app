@@ -4,6 +4,7 @@ import { projects as projectsApi, prompts as promptsApi, snippets as snippetsApi
 import type { Project, Prompt, Snippet, SnippetCollection, PromptMetrics } from '../api'
 import { useTreeMetrics } from '../hooks/useTreeMetrics'
 import DeleteProjectModal from './DeleteProjectModal'
+import { StatusFilter, filterPromptsByStatus, type StatusFilterValue } from './StatusFilter'
 
 interface Props {
   onProjectSelect: (projectId: string | null) => void
@@ -227,6 +228,7 @@ function ProjectEntry({
   activePromptId,
   onPromptSelect,
   onEnsureProjectSelected,
+  statusFilter,
 }: {
   project: Project
   isExpanded: boolean
@@ -240,15 +242,17 @@ function ProjectEntry({
   activePromptId?: string | null
   onPromptSelect?: (promptId: string | null) => void
   onEnsureProjectSelected?: (id: string) => void
+  statusFilter: StatusFilterValue
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const { metricsMap } = useTreeMetrics(isExpanded ? project.id : null)
 
   const projectPrompts = promptMap.get(project.id) ?? []
+  const filteredPrompts = filterPromptsByStatus(projectPrompts, statusFilter)
   const allMetrics = Array.from(metricsMap.values())
   const heat = maxHeatLevel(allMetrics)
-  const rootPrompts = projectPrompts.filter(p => !p.parent_prompt_id)
+  const rootPrompts = filteredPrompts.filter(p => !p.parent_prompt_id)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -421,7 +425,7 @@ function ProjectEntry({
                 <PromptNode
                   key={prompt.id}
                   prompt={prompt}
-                  allPrompts={projectPrompts}
+                  allPrompts={filteredPrompts}
                   projectId={project.id}
                   depth={0}
                   onReorder={onReorder}
@@ -450,6 +454,7 @@ export default function NavPanel({ onProjectSelect, activePromptId, onPromptSele
   const [snippetList, setSnippetList] = useState<Snippet[]>([])
   const [collectionList, setCollectionList] = useState<SnippetCollection[]>([])
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set())
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('draft+ready')
   useEffect(() => {
     projectsApi.list().then(setProjectList).catch(() => {})
     snippetsApi.list().then(setSnippetList).catch(() => {})
@@ -547,6 +552,10 @@ export default function NavPanel({ onProjectSelect, activePromptId, onPromptSele
         </button>
       </SectionLabel>
 
+      <div className="px-3 pb-1">
+        <StatusFilter value={statusFilter} onChange={setStatusFilter} compact />
+      </div>
+
       <div className="flex-1 overflow-y-auto">
         {projectList.length === 0 ? (
           <div className="px-3 py-2" style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
@@ -568,6 +577,7 @@ export default function NavPanel({ onProjectSelect, activePromptId, onPromptSele
               activePromptId={activePromptId}
               onPromptSelect={onPromptSelect}
               onEnsureProjectSelected={ensureProjectSelected}
+              statusFilter={statusFilter}
             />
           ))
         )}

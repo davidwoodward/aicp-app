@@ -19,6 +19,7 @@ import RefineDiff from '../components/RefineDiff'
 import { useCommandSuggestions } from '../hooks/useCommandSuggestions'
 import { useError } from '../hooks/useError'
 import ErrorContainer from '../components/ErrorContainer'
+import { StatusFilter, filterPromptsByStatus, type StatusFilterValue } from '../components/StatusFilter'
 
 interface Props {
   provider: string;
@@ -49,6 +50,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
   const [prompts, setPrompts] = useState<Prompt[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [loadingPrompts, setLoadingPrompts] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('draft+ready')
   const promptsLoadedFor = useRef<string | null>(null)
 
   // System log (slash command output)
@@ -546,29 +548,43 @@ export default function Chat({ provider, model, onModelChange }: Props) {
                     Type below to create a draft prompt.
                   </div>
                 </div>
-              ) : (
-                prompts
-                  .slice()
-                  .sort((a, b) => a.order_index - b.order_index)
-                  .map(prompt => (
-                    <div
-                      key={prompt.id}
-                      className="cursor-pointer"
-                      onClick={() => setActivePromptId?.(prompt.id)}
-                    >
-                      <PromptCard
-                        prompt={prompt}
-                        agents={agents}
-                        onUpdate={(p) => { handlePromptUpdate(p); setRefiningPromptId(null) }}
-                        onNavigateHistory={() => setHistoryPromptId?.(prompt.id)}
-                        autoRefine={refiningPromptId === prompt.id}
-                        onRefineDismiss={() => setRefiningPromptId(null)}
-                        previewLines={promptPreviewLines}
-                        historySnapshotDelay={historySnapshotDelay}
-                      />
+              ) : (() => {
+                const filtered = filterPromptsByStatus(prompts, statusFilter)
+                return (
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <StatusFilter value={statusFilter} onChange={setStatusFilter} />
                     </div>
-                  ))
-              )
+                    {filtered.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16">
+                        <div className="text-text-muted text-sm">No matching prompts.</div>
+                      </div>
+                    ) : (
+                      filtered
+                        .slice()
+                        .sort((a, b) => a.order_index - b.order_index)
+                        .map(prompt => (
+                          <div
+                            key={prompt.id}
+                            className="cursor-pointer"
+                            onClick={() => setActivePromptId?.(prompt.id)}
+                          >
+                            <PromptCard
+                              prompt={prompt}
+                              agents={agents}
+                              onUpdate={(p) => { handlePromptUpdate(p); setRefiningPromptId(null) }}
+                              onNavigateHistory={() => setHistoryPromptId?.(prompt.id)}
+                              autoRefine={refiningPromptId === prompt.id}
+                              onRefineDismiss={() => setRefiningPromptId(null)}
+                              previewLines={promptPreviewLines}
+                              historySnapshotDelay={historySnapshotDelay}
+                            />
+                          </div>
+                        ))
+                    )}
+                  </>
+                )
+              })()
             )}
 
             {/* Empty state */}

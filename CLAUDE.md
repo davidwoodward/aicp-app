@@ -107,6 +107,27 @@ Destructive actions (delete, archive) use a **red trash can SVG icon** — never
 
 **Reference implementations:** `TopBar.tsx` (icon), `SnippetManagementPanel.tsx` (inline confirm pattern), `SnippetEditor.tsx` (full pattern)
 
+### Status Filter Pattern
+
+A reusable prompt status filter is provided by `StatusFilter.tsx`.
+
+**Component:** `<StatusFilter value={filter} onChange={setFilter} compact? />`
+- Renders a button group matching the existing filter button pattern (9px mono uppercase, accent-colored active state)
+- `compact` prop: smaller text (8px), shorter labels — used in the sidebar
+
+**Type:** `StatusFilterValue = 'draft+ready' | 'draft' | 'ready' | 'sent' | 'done' | 'all'`
+
+**Utility:** `filterPromptsByStatus(prompts, filter)` — pure function, returns filtered array
+
+**Default filter:** `draft+ready` — surfaces prompts the user is actively working on
+
+**Where it's used:**
+- `NavPanel.tsx` — global sidebar filter (compact), filters prompts across all expanded projects
+- `Chat.tsx` — above prompt cards list
+- `PromptTree.tsx` — inline after Active/All/Archived buttons, only visible when archive filter is `active`
+
+**Reference implementation:** `StatusFilter.tsx`
+
 ## Docker
 
 The Dockerfile uses a multi-stage build:
