@@ -21,7 +21,7 @@ export default function DeleteProjectModal({ projectId, projectName, onConfirm, 
   useEffect(() => {
     projectsApi.stats(projectId)
       .then(setStats)
-      .catch(() => setStats({ prompts: 0 }))
+      .catch(() => setStats({ prompts: 0, sessions: 0 }))
       .finally(() => setLoading(false))
   }, [projectId])
 

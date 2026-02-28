@@ -67,7 +67,7 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory, onClose, autoRefine, onRefineDismiss, onInsertSnippet, pendingSnippetContent, onSnippetInserted, initialEdit, fillHeight, provider, model, previewLines, historySnapshotDelay }: Props) {
+export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory, onClose, autoRefine, onInsertSnippet, pendingSnippetContent, onSnippetInserted, initialEdit, fillHeight, provider, model, previewLines, historySnapshotDelay }: Props) {
   const { showError } = useError()
   const [refining, setRefining] = useState(!!initialEdit)
   const [expanded, setExpanded] = useState(false)
@@ -304,13 +304,6 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
     } finally {
       setAiRefining(false)
     }
-  }
-
-  function cancelRefine() {
-    setTitle(prompt.title)
-    setBody(prompt.body)
-    setRefining(false)
-    onRefineDismiss?.()
   }
 
   return (
