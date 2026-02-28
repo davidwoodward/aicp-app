@@ -72,6 +72,24 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
     try { const v = localStorage.getItem('aicp:right-panel-width'); return v ? Number(v) : 272 } catch { return 272 }
   })
 
+  // Responsive: collapse side panels on medium screens and below
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 768px)').matches)
+  const [leftOpen, setLeftOpen] = useState(false)
+  const [rightOpen, setRightOpen] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    const handler = (e: MediaQueryListEvent) => {
+      setIsMobile(e.matches)
+      if (!e.matches) { setLeftOpen(false); setRightOpen(false) }
+    }
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  const closeLeft = useCallback(() => setLeftOpen(false), [])
+  const closeRight = useCallback(() => setRightOpen(false), [])
+
   const handleLeftResize = useCallback((delta: number) => {
     setLeftWidth(w => clamp(w + delta, 160, 480))
   }, [])
@@ -191,11 +209,14 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
         e.preventDefault()
         setCmdkOpen(v => !v)
       }
-      if (e.key === 'Escape') setCmdkOpen(false)
+      if (e.key === 'Escape') {
+        setCmdkOpen(false)
+        if (isMobile) { setLeftOpen(false); setRightOpen(false) }
+      }
     }
     window.addEventListener('keydown', handle)
     return () => window.removeEventListener('keydown', handle)
-  }, [])
+  }, [isMobile])
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-surface-0">
@@ -207,31 +228,70 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
         onPromptsClick={() => { setActivePromptId(null); setEditingSnippetId(null); setSettingsOpen(false); setProfileOpen(false); setModelsOpen(false) }}
         onOpenProfile={handleOpenProfile}
         onOpenModels={handleOpenModels}
+        onToggleLeft={isMobile ? () => { setLeftOpen(v => !v); setRightOpen(false) } : undefined}
+        onToggleRight={isMobile ? () => { setRightOpen(v => !v); setLeftOpen(false) } : undefined}
       />
 
       {/* ── Three-panel body ─────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left — Navigation */}
-        <div className="shrink-0 border-r border-border overflow-hidden" style={{ width: leftWidth }}>
-          <NavPanel
-            key={navKey}
-            onProjectSelect={setSelectedProject}
-            activePromptId={activePromptId}
-            onPromptSelect={handlePromptSelect}
-            activeSnippetId={editingSnippetId}
-            onSnippetSelect={handleSnippetSelect}
-            onOpenSnippetManager={() => setSnippetManagerOpen(true)}
-            onOpenHistory={(projectId) => {
-              setSelectedProject(projectId)
-              openHistory('all')
-            }}
-            promptRefreshKey={promptRefreshKey}
-            snippetRefreshKey={snippetRefreshKey}
-          />
-        </div>
+        {/* Left — Navigation (inline on desktop, overlay on mobile) */}
+        {isMobile ? (
+          leftOpen && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 50 }}>
+              <div
+                style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}
+                onClick={closeLeft}
+              />
+              <div
+                style={{
+                  position: 'absolute', top: 0, bottom: 0, left: 0,
+                  width: Math.min(leftWidth, window.innerWidth - 48),
+                  background: 'var(--color-surface-0)',
+                  borderRight: '1px solid var(--color-border)',
+                  zIndex: 1,
+                }}
+              >
+                <NavPanel
+                  key={navKey}
+                  onProjectSelect={(id) => { setSelectedProject(id); closeLeft() }}
+                  activePromptId={activePromptId}
+                  onPromptSelect={(id) => { handlePromptSelect(id); closeLeft() }}
+                  activeSnippetId={editingSnippetId}
+                  onSnippetSelect={(id) => { handleSnippetSelect(id); closeLeft() }}
+                  onOpenSnippetManager={() => { setSnippetManagerOpen(true); closeLeft() }}
+                  onOpenHistory={(projectId) => {
+                    setSelectedProject(projectId)
+                    openHistory('all')
+                    closeLeft()
+                  }}
+                  promptRefreshKey={promptRefreshKey}
+                  snippetRefreshKey={snippetRefreshKey}
+                />
+              </div>
+            </div>
+          )
+        ) : (
+          <div className="shrink-0 border-r border-border overflow-hidden" style={{ width: leftWidth }}>
+            <NavPanel
+              key={navKey}
+              onProjectSelect={setSelectedProject}
+              activePromptId={activePromptId}
+              onPromptSelect={handlePromptSelect}
+              activeSnippetId={editingSnippetId}
+              onSnippetSelect={handleSnippetSelect}
+              onOpenSnippetManager={() => setSnippetManagerOpen(true)}
+              onOpenHistory={(projectId) => {
+                setSelectedProject(projectId)
+                openHistory('all')
+              }}
+              promptRefreshKey={promptRefreshKey}
+              snippetRefreshKey={snippetRefreshKey}
+            />
+          </div>
+        )}
 
-        <ResizeHandle onResize={handleLeftResize} onResizeEnd={handleLeftResizeEnd} />
+        {!isMobile && <ResizeHandle onResize={handleLeftResize} onResizeEnd={handleLeftResizeEnd} />}
 
         {/* Center — Profile / Models / Settings / Snippet editor / Chat */}
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -260,31 +320,74 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
           )}
         </div>
 
-        <ResizeHandle onResize={handleRightResize} onResizeEnd={handleRightResizeEnd} />
+        {!isMobile && <ResizeHandle onResize={handleRightResize} onResizeEnd={handleRightResizeEnd} />}
 
-        {/* Right — Telemetry + context bar */}
-        <div className="shrink-0 border-l border-border overflow-hidden" style={{ width: rightWidth }}>
-          <TelemetryPanel
-            provider={provider}
-            model={model}
-            onModelChange={onModelChange}
-            selectedProject={selectedProject}
-            refineMode={refineMode}
-            onRefineModeToggle={handleRefineModeToggle}
-            historyProjectId={historyPromptId ? selectedProject : null}
-            historyEntityId={historyPromptId && historyPromptId !== 'all' ? historyPromptId : undefined}
-            historyRefreshKey={historyRefreshKey}
-            onHistoryView={(log: ActivityLog) => setViewingHistoryLog(log)}
-            onHistoryRestore={(_prompt: Prompt) => {
-              setPromptRefreshKey(k => k + 1)
-              setViewingHistoryLog(null)
-            }}
-            onHistoryDismiss={() => {
-              setHistoryPromptId(null)
-              setViewingHistoryLog(null)
-            }}
-          />
-        </div>
+        {/* Right — Telemetry + context bar (inline on desktop, overlay on mobile) */}
+        {isMobile ? (
+          rightOpen && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 50 }}>
+              <div
+                style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}
+                onClick={closeRight}
+              />
+              <div
+                style={{
+                  position: 'absolute', top: 0, bottom: 0, right: 0,
+                  width: Math.min(rightWidth, window.innerWidth - 48),
+                  background: 'var(--color-surface-0)',
+                  borderLeft: '1px solid var(--color-border)',
+                  zIndex: 1,
+                }}
+              >
+                <TelemetryPanel
+                  provider={provider}
+                  model={model}
+                  onModelChange={(p, m) => { onModelChange(p, m); closeRight() }}
+                  selectedProject={selectedProject}
+                  refineMode={refineMode}
+                  onRefineModeToggle={() => { handleRefineModeToggle(); closeRight() }}
+                  historyProjectId={historyPromptId ? selectedProject : null}
+                  historyEntityId={historyPromptId && historyPromptId !== 'all' ? historyPromptId : undefined}
+                  historyRefreshKey={historyRefreshKey}
+                  onHistoryView={(log: ActivityLog) => { setViewingHistoryLog(log); closeRight() }}
+                  onHistoryRestore={(_prompt: Prompt) => {
+                    setPromptRefreshKey(k => k + 1)
+                    setViewingHistoryLog(null)
+                    closeRight()
+                  }}
+                  onHistoryDismiss={() => {
+                    setHistoryPromptId(null)
+                    setViewingHistoryLog(null)
+                    closeRight()
+                  }}
+                />
+              </div>
+            </div>
+          )
+        ) : (
+          <div className="shrink-0 border-l border-border overflow-hidden" style={{ width: rightWidth }}>
+            <TelemetryPanel
+              provider={provider}
+              model={model}
+              onModelChange={onModelChange}
+              selectedProject={selectedProject}
+              refineMode={refineMode}
+              onRefineModeToggle={handleRefineModeToggle}
+              historyProjectId={historyPromptId ? selectedProject : null}
+              historyEntityId={historyPromptId && historyPromptId !== 'all' ? historyPromptId : undefined}
+              historyRefreshKey={historyRefreshKey}
+              onHistoryView={(log: ActivityLog) => setViewingHistoryLog(log)}
+              onHistoryRestore={(_prompt: Prompt) => {
+                setPromptRefreshKey(k => k + 1)
+                setViewingHistoryLog(null)
+              }}
+              onHistoryDismiss={() => {
+                setHistoryPromptId(null)
+                setViewingHistoryLog(null)
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Cmd+K palette overlay */}

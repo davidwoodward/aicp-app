@@ -12,9 +12,11 @@ interface Props {
   onPromptsClick?: () => void
   onOpenProfile?: () => void
   onOpenModels?: () => void
+  onToggleLeft?: () => void
+  onToggleRight?: () => void
 }
 
-export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPromptsClick, onOpenProfile, onOpenModels }: Props) {
+export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPromptsClick, onOpenProfile, onOpenModels, onToggleLeft, onToggleRight }: Props) {
   const location = useLocation()
   const isPrompts = location.pathname === '/'
   const isProjects = location.pathname.startsWith('/projects')
@@ -31,6 +33,21 @@ export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPrompt
       className="flex items-center gap-3 px-3 shrink-0 border-b bg-surface-1"
       style={{ height: '36px', borderColor: isDev ? '#dc2626' : undefined, borderBottomWidth: isDev ? '2px' : undefined }}
     >
+      {/* Left panel toggle (mobile only) */}
+      {onToggleLeft && (
+        <button
+          onClick={onToggleLeft}
+          className="flex items-center px-1 py-0.5 rounded hover:bg-surface-2 transition-colors"
+          title="Toggle navigation"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+      )}
+
       <span
         className="flex items-center gap-1.5 text-accent tracking-widest select-none"
         style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 800, letterSpacing: '0.15em' }}
@@ -58,6 +75,20 @@ export default function TopBar({ onCmdK, onOpenDeleted, onOpenSettings, onPrompt
       </Link>
 
       <div className="flex-1" />
+
+      {/* Right panel toggle (mobile only) */}
+      {onToggleRight && (
+        <button
+          onClick={onToggleRight}
+          className="flex items-center px-1 py-0.5 rounded hover:bg-surface-2 transition-colors"
+          title="Toggle context panel"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="15" y1="3" x2="15" y2="21" />
+          </svg>
+        </button>
+      )}
 
       {/* Cmd+K trigger */}
       {onCmdK && (
