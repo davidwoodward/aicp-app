@@ -3,6 +3,8 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '--build-arg'
+      - 'VITE_GOOGLE_CLIENT_ID=${_GOOGLE_OAUTH_CLIENT_ID}'
       - '-t'
       - '${_REPOSITORY}/${_IMAGE}:${COMMIT_SHA}'
       - '-t'
