@@ -275,7 +275,7 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
             historyEntityId={historyPromptId && historyPromptId !== 'all' ? historyPromptId : undefined}
             historyRefreshKey={historyRefreshKey}
             onHistoryView={(log: ActivityLog) => setViewingHistoryLog(log)}
-            onHistoryRestore={(prompt: Prompt) => {
+            onHistoryRestore={(_prompt: Prompt) => {
               setPromptRefreshKey(k => k + 1)
               setViewingHistoryLog(null)
             }}
