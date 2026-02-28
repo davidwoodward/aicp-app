@@ -13,6 +13,9 @@ RUN npm run build
 COPY frontend/package.json frontend/package-lock.json* ./frontend/
 RUN cd frontend && npm ci
 
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+
 COPY frontend ./frontend
 RUN cd frontend && npm run build
 
