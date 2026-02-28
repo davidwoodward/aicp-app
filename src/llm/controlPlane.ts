@@ -1,4 +1,4 @@
-import { loadLLMConfig, isValidProvider, ProviderName } from "./config";
+import { loadLLMConfig, loadUserLLMConfig, isValidProvider, ProviderName, type UserLLMKeys } from "./config";
 import { createProvider } from "./index";
 import { ChatMessage } from "./provider";
 
@@ -24,8 +24,8 @@ Rules:
 - If the intent is unclear, return action "unknown" with a reason.
 - NEVER return anything except the JSON object.`;
 
-function getControlPlaneConfig(): { provider: ProviderName; model: string } {
-  const config = loadLLMConfig();
+function getControlPlaneConfig(userKeys?: UserLLMKeys): { provider: ProviderName; model: string } {
+  const config = userKeys ? loadUserLLMConfig(userKeys) : loadLLMConfig();
 
   const providerEnv = process.env.CONTROL_PLANE_PROVIDER || "";
   const modelEnv = process.env.CONTROL_PLANE_MODEL || "";
@@ -41,9 +41,9 @@ function getControlPlaneConfig(): { provider: ProviderName; model: string } {
   return { provider, model };
 }
 
-export async function interpret(userInput: string): Promise<ControlPlaneResult> {
-  const { provider: providerName, model } = getControlPlaneConfig();
-  const config = loadLLMConfig();
+export async function interpret(userInput: string, userKeys?: UserLLMKeys): Promise<ControlPlaneResult> {
+  const { provider: providerName, model } = getControlPlaneConfig(userKeys);
+  const config = userKeys ? loadUserLLMConfig(userKeys) : loadLLMConfig();
   const providerConfig = { ...config.providers[providerName], model };
 
   if (!providerConfig.configured) {

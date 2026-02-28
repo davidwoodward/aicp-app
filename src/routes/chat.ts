@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { loadLLMConfig, isValidProvider, ProviderName } from "../llm/config";
+import { loadLLMConfig, loadUserLLMConfig, isValidProvider, ProviderName } from "../llm/config";
+import { getUserSettings } from "../firestore/user-settings";
 import { trackExecutionStarted, trackExecutionCompleted } from "../telemetry/telemetryService";
 import { createProvider } from "../llm/index";
 import { toolDefinitions } from "../llm/tools";
@@ -57,8 +58,11 @@ export function registerChatRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "message is required" });
     }
 
-    // Resolve provider & model
-    const config = loadLLMConfig();
+    // Resolve provider & model (merge user keys)
+    const userSettings = await getUserSettings(req.user.id);
+    const config = userSettings?.llm_keys
+      ? loadUserLLMConfig(userSettings.llm_keys)
+      : loadLLMConfig();
     let providerName: ProviderName = config.defaultProvider as ProviderName;
     if (body.provider && typeof body.provider === "string" && isValidProvider(body.provider)) {
       providerName = body.provider;
