@@ -10,7 +10,8 @@ import {
   listChatMessagesByConversation,
   deleteChatMessagesByConversation,
 } from "../firestore/chat-messages";
-import { loadLLMConfig } from "../llm/config";
+import { loadLLMConfig, loadUserLLMConfig } from "../llm/config";
+import { getUserSettings } from "../firestore/user-settings";
 import { logActivity } from "../middleware/activityLogger";
 
 export function registerConversationRoutes(app: FastifyInstance) {
@@ -20,7 +21,10 @@ export function registerConversationRoutes(app: FastifyInstance) {
 
   app.post("/conversations", async (req, reply) => {
     const body = req.body as Record<string, unknown>;
-    const config = loadLLMConfig();
+    const userSettings = await getUserSettings(req.user.id);
+    const config = userSettings?.llm_keys
+      ? loadUserLLMConfig(userSettings.llm_keys)
+      : loadLLMConfig();
 
     const title = typeof body.title === "string" ? body.title : "New Chat";
     const provider = typeof body.provider === "string" ? body.provider : config.defaultProvider;

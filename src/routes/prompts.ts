@@ -18,7 +18,8 @@ import { getAgent, sendToAgent } from "../websocket/agentRegistry";
 import { db } from "../firestore/client";
 import { logActivity } from "../middleware/activityLogger";
 import { trackExecutionStarted } from "../telemetry/telemetryService";
-import { loadLLMConfig, isValidProvider, ProviderName } from "../llm/config";
+import { loadLLMConfig, loadUserLLMConfig, isValidProvider, ProviderName } from "../llm/config";
+import { getUserSettings } from "../firestore/user-settings";
 import { createProvider } from "../llm/index";
 import { getSetting } from "../firestore/settings";
 import { DEFAULT_REFINE_SYSTEM_PROMPT } from "./settings";
@@ -382,7 +383,10 @@ export function registerPromptRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "prompt not found" });
     }
 
-    const config = loadLLMConfig();
+    const userSettings = await getUserSettings(req.user.id);
+    const config = userSettings?.llm_keys
+      ? loadUserLLMConfig(userSettings.llm_keys)
+      : loadLLMConfig();
     const body = req.body as Record<string, unknown> | null;
     let providerName = config.defaultProvider as ProviderName;
     if (body?.provider && typeof body.provider === "string" && isValidProvider(body.provider)) {

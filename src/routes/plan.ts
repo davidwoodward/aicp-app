@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { interpret } from "../llm/controlPlane";
 import { executeTool, type ToolUserContext } from "../llm/tool-executor";
 import { logActivity } from "../middleware/activityLogger";
+import { getUserSettings } from "../firestore/user-settings";
 
 interface PlanBody {
   message: string;
@@ -19,7 +20,8 @@ export function registerPlanRoutes(app: FastifyInstance) {
     if (!message || typeof message !== "string") {
       return reply.status(400).send({ error: "message is required" });
     }
-    const result = await interpret(message);
+    const userSettings = await getUserSettings(req.user.id);
+    const result = await interpret(message, userSettings?.llm_keys);
     return result;
   });
 

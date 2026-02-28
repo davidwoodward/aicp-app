@@ -75,8 +75,9 @@ function settingsKey(projectId?: string): string {
  */
 export async function getRegistrySnapshot(
   projectId?: string,
+  userKeys?: UserLLMKeys,
 ): Promise<RegistrySnapshot> {
-  const config = loadLLMConfig();
+  const config = userKeys ? loadUserLLMConfig(userKeys) : loadLLMConfig();
   const setting = await getSetting(settingsKey(projectId)).catch(
     () => null,
   );
@@ -117,8 +118,8 @@ export async function getRegistrySnapshot(
 /**
  * Get the status summary for all providers (lightweight, no project overrides).
  */
-export function getProviderStatuses(): ProviderStatus[] {
-  const config = loadLLMConfig();
+export function getProviderStatuses(userKeys?: UserLLMKeys): ProviderStatus[] {
+  const config = userKeys ? loadUserLLMConfig(userKeys) : loadLLMConfig();
   return (
     Object.entries(config.providers) as [ProviderName, ProviderConfig][]
   ).map(([name, pc]) => {
@@ -147,12 +148,13 @@ export async function setModelOverride(
   provider: string,
   model: string,
   projectId?: string,
+  userKeys?: UserLLMKeys,
 ): Promise<ModelOverride> {
   if (!isValidProvider(provider)) {
     throw new RegistryError(`Unknown provider: ${provider}`);
   }
 
-  const config = loadLLMConfig();
+  const config = userKeys ? loadUserLLMConfig(userKeys) : loadLLMConfig();
   if (!config.providers[provider].configured) {
     throw new RegistryError(
       `Provider "${provider}" is not configured — missing API key`,
@@ -235,9 +237,9 @@ export async function resolveProvider(
 /**
  * Check whether a specific provider is configured and ready for execution.
  */
-export function isProviderReady(provider: string): boolean {
+export function isProviderReady(provider: string, userKeys?: UserLLMKeys): boolean {
   if (!isValidProvider(provider)) return false;
-  const config = loadLLMConfig();
+  const config = userKeys ? loadUserLLMConfig(userKeys) : loadLLMConfig();
   return config.providers[provider].configured;
 }
 
@@ -245,15 +247,15 @@ export function isProviderReady(provider: string): boolean {
  * Guard that throws if no provider is available for execution.
  * Call before any LLM operation to get a clear error early.
  */
-export function requireConfiguredProvider(provider: string): void {
+export function requireConfiguredProvider(provider: string, userKeys?: UserLLMKeys): void {
   if (!isValidProvider(provider)) {
     throw new RegistryError(`Unknown provider: ${provider}`);
   }
-  const config = loadLLMConfig();
+  const config = userKeys ? loadUserLLMConfig(userKeys) : loadLLMConfig();
   if (!config.providers[provider].configured) {
     throw new RegistryError(
       `Cannot execute: provider "${provider}" is not configured. ` +
-        `Set the ${provider.toUpperCase()}_API_KEY environment variable.`,
+        `Add your API key in Profile → Models.`,
     );
   }
 }
