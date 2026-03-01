@@ -128,6 +128,34 @@ A reusable prompt status filter is provided by `StatusFilter.tsx`.
 
 **Reference implementation:** `StatusFilter.tsx`
 
+### Responsive Panel Collapse Pattern
+
+On viewports <= 768px, side panels (left nav, right telemetry) collapse into on-demand overlays. Desktop layout is unchanged.
+
+**Breakpoint:** `window.matchMedia('(max-width: 768px)')` — tracked via `isMobile` state in `AppShell.tsx`
+
+**State:** `leftOpen` / `rightOpen` booleans, default `false`. Only one panel open at a time.
+
+**Toggle buttons:** Passed as optional `onToggleLeft` / `onToggleRight` props to `TopBar`. When provided (mobile only), TopBar renders:
+- Hamburger icon (3-line menu) before the AICP logo — opens left nav
+- Sidebar icon (panel outline) after the flex spacer — opens right telemetry
+
+**Overlay structure:**
+```
+<div fixed inset-0 z-50>
+  <div backdrop rgba(0,0,0,0.5) onClick={close} />
+  <div panel absolute top-0 bottom-0 left|right-0 width={panelWidth} bg-surface-0 border>
+    <PanelComponent ... wrappedCallbacks />
+  </div>
+</div>
+```
+
+**Auto-close behavior:** Every callback from a panel that propagates to AppShell is wrapped to also call `closeLeft()` or `closeRight()`. This covers project/prompt/snippet selection, model change, refine toggle, history actions, etc. Backdrop click and Escape key also close.
+
+**Resize handles:** Hidden on mobile (`{!isMobile && <ResizeHandle />}`).
+
+**Reference implementation:** `AppShell.tsx` (panel state + overlays), `TopBar.tsx` (toggle buttons)
+
 ## Docker
 
 The Dockerfile uses a multi-stage build:
