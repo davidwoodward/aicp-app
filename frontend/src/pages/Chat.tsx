@@ -242,6 +242,22 @@ export default function Chat({ provider, model, onModelChange }: Props) {
         }
         break
 
+      case '/go': {
+        const num = parseInt(args, 10)
+        if (!args || isNaN(num)) {
+          showError('Usage: /go <number>')
+        } else {
+          const sorted = prompts.slice().sort((a, b) => a.order_index - b.order_index)
+          const target = sorted[num - 1]
+          if (!target) {
+            showError(`Prompt #${num} not found (${sorted.length} prompts)`)
+          } else {
+            setActivePromptId?.(target.id)
+          }
+        }
+        break
+      }
+
       default:
         showError(`Unknown command: ${command}`)
     }
@@ -559,27 +575,32 @@ export default function Chat({ provider, model, onModelChange }: Props) {
                         <div className="text-text-muted text-sm">No matching prompts.</div>
                       </div>
                     ) : (
-                      filtered
-                        .slice()
-                        .sort((a, b) => a.order_index - b.order_index)
-                        .map(prompt => (
-                          <div
-                            key={prompt.id}
-                            className="cursor-pointer"
-                            onClick={() => setActivePromptId?.(prompt.id)}
-                          >
-                            <PromptCard
-                              prompt={prompt}
-                              agents={agents}
-                              onUpdate={(p) => { handlePromptUpdate(p); setRefiningPromptId(null) }}
-                              onNavigateHistory={() => setHistoryPromptId?.(prompt.id)}
-                              autoRefine={refiningPromptId === prompt.id}
-                              onRefineDismiss={() => setRefiningPromptId(null)}
-                              previewLines={promptPreviewLines}
-                              historySnapshotDelay={historySnapshotDelay}
-                            />
-                          </div>
-                        ))
+                      (() => {
+                        const allSorted = prompts.slice().sort((a, b) => a.order_index - b.order_index)
+                        const numberMap = new Map(allSorted.map((p, i) => [p.id, i + 1]))
+                        return filtered
+                          .slice()
+                          .sort((a, b) => a.order_index - b.order_index)
+                          .map(prompt => (
+                            <div
+                              key={prompt.id}
+                              className="cursor-pointer"
+                              onClick={() => setActivePromptId?.(prompt.id)}
+                            >
+                              <PromptCard
+                                prompt={prompt}
+                                agents={agents}
+                                onUpdate={(p) => { handlePromptUpdate(p); setRefiningPromptId(null) }}
+                                onNavigateHistory={() => setHistoryPromptId?.(prompt.id)}
+                                autoRefine={refiningPromptId === prompt.id}
+                                onRefineDismiss={() => setRefiningPromptId(null)}
+                                previewLines={promptPreviewLines}
+                                historySnapshotDelay={historySnapshotDelay}
+                                displayNumber={numberMap.get(prompt.id)}
+                              />
+                            </div>
+                          ))
+                      })()
                     )}
                   </>
                 )
