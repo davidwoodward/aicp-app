@@ -12,7 +12,8 @@ export interface SuggestionState {
 }
 
 const COMMANDS: SuggestionItem[] = [
-  { text: '/new',      label: '/new',      description: 'Create a new prompt' },
+  { text: '/prompt',   label: '/prompt',   description: 'Create a new prompt — /prompt <text>' },
+  { text: '/new',      label: '/new',      description: 'Create a new prompt (alias for /prompt)' },
   { text: '/snippet',  label: '/snippet',  description: 'Browse snippets or /snippet new <text>' },
   { text: '/model',    label: '/model',    description: 'Switch model' },
   { text: '/refine',   label: '/refine',   description: 'Refine the latest prompt' },

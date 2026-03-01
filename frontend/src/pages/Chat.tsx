@@ -175,6 +175,7 @@ export default function Chat({ provider, model, onModelChange }: Props) {
 
     switch (cmd) {
       case '/new':
+      case '/prompt':
         if (!selectedProject) {
           showError('Select a project first')
         } else if (args) {
@@ -247,11 +248,9 @@ export default function Chat({ provider, model, onModelChange }: Props) {
   }, [selectedProject, provider, model, prompts, createDraftPrompt, showError])
 
   // ── Unified send handler ───────────────────────────────────────────
-  const handleSend = useCallback((text: string) => {
-    if (selectedProject) {
-      createDraftPrompt(text)
-    }
-  }, [selectedProject, createDraftPrompt])
+  const handleSend = useCallback((_text: string) => {
+    pushSystemEntry('Chat is not enabled yet. Use /prompt <text> to create a prompt, or type / to see all commands.')
+  }, [pushSystemEntry])
 
   function handleModelSelect(p: string, m: string) {
     onModelChange(p, m)
