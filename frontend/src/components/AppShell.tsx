@@ -219,7 +219,7 @@ export default function AppShell({ provider, model, onModelChange }: Props) {
   }, [isMobile])
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-surface-0">
+    <div className="flex flex-col overflow-hidden bg-surface-0" style={{ height: '100dvh' }}>
 
       <TopBar
         onCmdK={() => setCmdkOpen(true)}
