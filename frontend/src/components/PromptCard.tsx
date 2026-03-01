@@ -36,6 +36,7 @@ interface Props {
   model?: string
   previewLines?: number
   historySnapshotDelay?: number
+  displayNumber?: number
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -67,7 +68,7 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory, onClose, autoRefine, onInsertSnippet, pendingSnippetContent, onSnippetInserted, initialEdit, fillHeight, provider, model, previewLines, historySnapshotDelay }: Props) {
+export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory, onClose, autoRefine, onInsertSnippet, pendingSnippetContent, onSnippetInserted, initialEdit, fillHeight, provider, model, previewLines, historySnapshotDelay, displayNumber }: Props) {
   const { showError } = useError()
   const [refining, setRefining] = useState(!!initialEdit)
   const [expanded, setExpanded] = useState(false)
@@ -310,6 +311,14 @@ export default function PromptCard({ prompt, agents, onUpdate, onNavigateHistory
     <div className={`rounded-lg border border-border bg-surface-1 overflow-hidden${fillHeight ? ' flex flex-col h-full' : ''}`}>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
+        {displayNumber != null && (
+          <span
+            className="shrink-0 text-[10px] font-mono"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            #{displayNumber}
+          </span>
+        )}
         {refining ? (
           <input
             type="text"

@@ -18,6 +18,7 @@ const COMMANDS: SuggestionItem[] = [
   { text: '/model',    label: '/model',    description: 'Switch model' },
   { text: '/refine',   label: '/refine',   description: 'Refine the latest prompt' },
   { text: '/history',  label: '/history',  description: 'View project history' },
+  { text: '/go',       label: '/go',       description: 'Go to prompt by number — /go <#>' },
 ]
 
 export function useCommandSuggestions(input: string): SuggestionState {
